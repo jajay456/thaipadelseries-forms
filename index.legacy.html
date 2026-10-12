@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sheet Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f6f7f9; --card: #fff; --text: #1b1f24; --muted: #667080; --line: #e3e6ea;
+  --accent: #2563eb; --accent-soft: #e8efff; --ok: #15803d;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111418; --card: #1a1e24; --text: #e7eaee; --muted: #9aa3ae; --line: #2a3038;
+    --accent: #6b9bff; --accent-soft: #1f2b45; --ok: #4ade80; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 "IBM Plex Sans Thai", system-ui, sans-serif; }
+header { padding: 16px; border-bottom: 1px solid var(--line); background: var(--card);
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+header h1 { font-size: 18px; margin: 0; flex: 1; }
+.wrap { max-width: 1400px; margin: 0 auto; padding: 16px; }
+button, input, select { font: inherit; color: inherit; }
+.btn { border: 1px solid var(--line); background: var(--card); padding: 6px 12px;
+  border-radius: 8px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.tab { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--card); cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tab .x { opacity: .6; font-size: 12px; }
+.tab .x:hover { opacity: 1; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.stat .k { color: var(--muted); font-size: 12px; }
+.stat .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.chip { padding: 4px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--line);
+  cursor: pointer; font-size: 13px; }
+.chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.chip b { font-variant-numeric: tabular-nums; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.toolbar input { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--card); }
+.muted { color: var(--muted); font-size: 12px; }
+.tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; white-space: nowrap; }
+td.wrap-text { white-space: normal; min-width: 180px; }
+th { position: sticky; top: 0; background: var(--card); font-weight: 600; font-size: 12px; color: var(--muted); cursor: pointer; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--accent-soft); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+a.link { color: var(--accent); text-decoration: none; }
+.thumb { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; background: var(--line); }
+.state { padding: 40px; text-align: center; color: var(--muted); }
+dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--text);
+  max-width: 560px; width: calc(100% - 32px); padding: 20px; }
+dialog::backdrop { background: rgba(0,0,0,.4); }
+dialog h2 { margin: 0 0 12px; font-size: 17px; }
+dialog label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+dialog input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.detail { display: grid; grid-template-columns: 40% 60%; gap: 6px 12px; font-size: 13px; }
+.detail .k { color: var(--muted); }
+.detail .v { word-break: break-word; }
+.detail img { max-width: 100%; border-radius: 8px; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card); }
+.seg button { border: 0; background: none; padding: 6px 12px; cursor: pointer; }
+.seg button.on { background: var(--accent); color: #fff; }
+.groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 12px; align-items: start; }
+.group { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.group h3 { margin: 0; padding: 10px 14px; font-size: 14px; border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; gap: 8px; }
+.group ol { margin: 0; padding: 0; list-style: none; }
+.group li { display: flex; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.group li:last-child { border-bottom: 0; }
+.group .n { color: var(--muted); min-width: 20px; text-align: right; font-variant-numeric: tabular-nums; flex: none; }
+.pname[data-row] { cursor: pointer; }
+.pname[data-row]:hover { color: var(--accent); }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; color: var(--muted); border: 1px solid var(--line); white-space: nowrap; }
+.actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📋 Sheet Dashboard</h1>
+  <span class="muted" id="updated"></span>
+  <button class="btn" id="refresh">↻ รีเฟรช</button>
+  <button class="btn primary" id="addBtn">+ เพิ่มชีต</button>
+</header>
+
+<div class="wrap">
+  <div class="tabs" id="tabs"></div>
+  <div class="stats" id="stats"></div>
+  <div class="chips" id="chips"></div>
+  <div class="toolbar">
+    <div class="seg" id="view"><button data-v="table">ตาราง</button><button data-v="list">รายชื่อ</button></div>
+    <input id="q" placeholder="ค้นหา ชื่อ / อีเมล / เบอร์ / อะไรก็ได้…">
+    <button class="btn" id="csv">⬇ CSV</button>
+    <span class="muted" id="count"></span>
+  </div>
+  <div class="tablewrap" id="table"></div>
+</div>
+
+<dialog id="addDlg">
+  <form method="dialog" id="addForm">
+    <h2>เพิ่ม Google Sheet</h2>
+    <p class="muted">ชีตต้องแชร์เป็น "ทุกคนที่มีลิงก์ดูได้" (Anyone with the link → Viewer)</p>
+    <label>ชื่อที่แสดง</label>
+    <input id="fName" placeholder="เช่น Tournament ตุลาคม" required>
+    <label>ลิงก์ Google Sheet</label>
+    <input id="fUrl" placeholder="https://docs.google.com/spreadsheets/d/…" required>
+    <label>ชื่อแท็บ (เว้นว่าง = ใช้แท็บจากลิงก์ หรือแท็บแรก)</label>
+    <input id="fTab" placeholder="Form Responses 1">
+    <div class="actions">
+      <button class="btn" value="cancel" formnovalidate>ยกเลิก</button>
+      <button class="btn primary" value="ok">เพิ่ม</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="rowDlg">
+  <h2 id="rowTitle"></h2>
+  <div class="detail" id="rowBody"></div>
+  <div class="actions"><button class="btn" onclick="rowDlg.close()">ปิด</button></div>
+</dialog>
+
+<script>
+// ===== ตั้งค่าชีตเริ่มต้น — เพิ่มชีตถาวรได้ที่นี่ =====
+const DEFAULT_SHEETS = [
+  { name: "Registration", url: "https://docs.google.com/spreadsheets/d/1ss9GVk0yGy5NRa5uDDAuaZ47JfbX1mGGOpQoAfH7bEE/edit", tab: "Form Responses 1" },
+];
+const AUTO_REFRESH_MS = 60_000;
+// ===================================================
+
+const STORE_KEY = "sheetDashboard.sheets", VIEW_KEY = "sheetDashboard.view";
+const $ = (id) => document.getElementById(id);
+
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+let userSheets = store.get(STORE_KEY) || [];
+let sheets = () => [...DEFAULT_SHEETS.map((s) => ({ ...s, builtin: true })), ...userSheets];
+let active = 0, data = null, filterCat = null, sortCol = null, sortDir = 1;
+let view = store.get(VIEW_KEY) === "list" ? "list" : "table";
+
+function sheetUrl({ url, tab }) {
+  const id = (url.match(/\/d\/([a-zA-Z0-9-_]+)/) || [])[1];
+  if (!id) throw new Error("ลิงก์ไม่ถูกต้อง");
+  const gid = (url.match(/[#&?]gid=(\d+)/) || [])[1];
+  const q = tab ? `&sheet=${encodeURIComponent(tab)}` : gid ? `&gid=${gid}` : "";
+  return `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv${q}&_=${Date.now()}`;
+}
+
+function parseCSV(text) {
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') q = false;
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell); rows.push(row); row = []; cell = "";
+    } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+// เดาความหมายของคอลัมน์จากหัวตาราง เพื่อให้ใช้กับชีตแบบอื่นได้ด้วย
+function detect(headers) {
+  const find = (re, not) => headers.findIndex((h) => re.test(h) && !(not && not.test(h)));
+  const cats = headers.map((h, i) => (/category|ประเภท|รุ่น/i.test(h) && !/partner|are you/i.test(h) ? i : -1)).filter((i) => i >= 0);
+  return {
+    name: find(/full name|^name$|ชื่อ/i, /partner|player\(s\)/i),
+    amount: find(/amount|thb|baht|price|ยอด|ราคา|จำนวนเงิน/i),
+    cats,
+    // คอลัมน์ partner ที่อยู่ถัดจากแต่ละคอลัมน์ประเภท (ก่อนถึงประเภทถัดไป)
+    partners: cats.map((ci, k) => headers.findIndex((h, j) => j > ci && j < (cats[k + 1] ?? Infinity) && /partner|คู่/i.test(h))),
+    nation: find(/nationality|country|สัญชาติ|ประเทศ/i),
+    photo: find(/photo|รูป/i),
+  };
+}
+
+const num = (v) => parseFloat(String(v).replace(/[^\d.-]/g, "")) || 0;
+const fmt = (n) => n.toLocaleString("th-TH");
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const norm = (s) => String(s).toLowerCase().replace(/\s+/g, " ").trim();
+const noName = (s) => /^[-–.\s]*$|^(none|n\/?a|no|ไม่มี)$/i.test(s);
+// ชื่อตรงกัน ถ้าเหมือนกัน หรืออันหนึ่งขึ้นต้นด้วยอีกอัน (เช่น "James Humphries" กับ "James Humphries-Stone")
+const same = (a, b) => { a = norm(a); b = norm(b); return !!a && !!b && (a === b || Math.min(a.length, b.length) >= 5 && (a.startsWith(b) || b.startsWith(a))); };
+const driveId = (v) => (v.match(/drive\.google\.com\/(?:open\?id=|file\/d\/)([\w-]+)/) || [])[1];
+
+async function load() {
+  const s = sheets()[active];
+  if (!s) { $("table").innerHTML = `<div class="state">ยังไม่มีชีต กด "+ เพิ่มชีต"</div>`; return; }
+  if (!data) $("table").innerHTML = `<div class="state">กำลังโหลด…</div>`;
+  try {
+    const res = await fetch(sheetUrl(s));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    if (text.trim().startsWith("<")) throw new Error("อ่านชีตไม่ได้ — ตรวจสอบว่าแชร์แบบ 'Anyone with the link'");
+    const rows = parseCSV(text).filter((r) => r.some((c) => c.trim()));
+    const headers = rows.shift() || [];
+    // ซ่อนคอลัมน์ที่ว่างทั้งคอลัมน์
+    const keep = headers.map((_, i) => i).filter((i) => headers[i].trim() && rows.some((r) => (r[i] || "").trim()));
+    data = {
+      headers: keep.map((i) => headers[i].trim()),
+      rows: rows.map((r) => keep.map((i) => (r[i] || "").trim())),
+    };
+    data.meta = detect(data.headers);
+    $("updated").textContent = "อัปเดต " + new Date().toLocaleTimeString("th-TH");
+    render();
+  } catch (e) {
+    data = null;
+    $("stats").innerHTML = $("chips").innerHTML = "";
+    $("table").innerHTML = `<div class="state">⚠️ ${esc(e.message)}</div>`;
+  }
+}
+
+function filtered() {
+  const q = $("q").value.toLowerCase().trim();
+  let rows = data.rows.filter((r) =>
+    (!q || r.some((c) => c.toLowerCase().includes(q))) &&
+    (!filterCat || data.meta.cats.some((i) => r[i] === filterCat)));
+  if (sortCol !== null) {
+    const numeric = rows.every((r) => !r[sortCol] || !isNaN(num(r[sortCol])) && /^[\d,.\s-]+$/.test(r[sortCol]));
+    rows = [...rows].sort((a, b) => (numeric ? num(a[sortCol]) - num(b[sortCol]) : a[sortCol].localeCompare(b[sortCol])) * sortDir);
+  }
+  return rows;
+}
+
+function renderTabs() {
+  $("tabs").innerHTML = sheets().map((s, i) =>
+    `<div class="tab ${i === active ? "active" : ""}" data-i="${i}">${esc(s.name)}${s.builtin ? "" : `<span class="x" data-del="${i}" title="ลบ">✕</span>`}</div>`).join("");
+}
+
+function render() {
+  renderTabs();
+  if (!data) return;
+  const { headers, meta } = data;
+  const rows = filtered();
+
+  // สถิติ
+  const stats = [["จำนวนรายการ", fmt(rows.length)]];
+  if (meta.amount >= 0) stats.push(["ยอดรวม (" + (/thb/i.test(headers[meta.amount]) ? "THB" : "") + ")", fmt(rows.reduce((t, r) => t + num(r[meta.amount]), 0))]);
+  if (meta.nation >= 0) stats.push(["สัญชาติ", fmt(new Set(rows.map((r) => r[meta.nation].toLowerCase()).filter(Boolean)).size)]);
+  if (meta.cats.length) stats.push(["ประเภทที่สมัคร (รวมทุกช่อง)", fmt(rows.reduce((t, r) => t + meta.cats.filter((i) => r[i]).length, 0))]);
+  $("stats").innerHTML = stats.map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+
+  // ชิปประเภท
+  const counts = {};
+  data.rows.forEach((r) => meta.cats.forEach((i) => r[i] && (counts[r[i]] = (counts[r[i]] || 0) + 1)));
+  const cats = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  $("chips").innerHTML = cats.length
+    ? `<span class="chip ${!filterCat ? "on" : ""}" data-cat="">ทั้งหมด</span>` +
+      cats.map(([c, n]) => `<span class="chip ${filterCat === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)} <b>${n}</b></span>`).join("")
+    : "";
+
+  $("count").textContent = `แสดง ${rows.length} / ${data.rows.length}`;
+  $("table").className = view === "list" ? "" : "tablewrap";
+  if (!rows.length) { $("table").innerHTML = `<div class="state">ไม่พบข้อมูล</div>`; return; }
+  if (view === "list") return renderList(rows);
+
+  const cell = (v, i) => {
+    if (!v) return `<td></td>`;
+    if (/^https?:\/\//.test(v)) {
+      const id = driveId(v);
+      if (i === meta.photo && id) return `<td><a href="${esc(v)}" target="_blank" onclick="event.stopPropagation()"><img class="thumb" loading="lazy" src="https://drive.google.com/thumbnail?id=${id}&sz=w100" alt=""></a></td>`;
+      return `<td><a class="link" href="${esc(v)}" target="_blank" onclick="event.stopPropagation()">เปิด ↗</a></td>`;
+    }
+    if (i === meta.amount) return `<td class="num">${fmt(num(v))}</td>`;
+    return `<td class="${v.length > 40 ? "wrap-text" : ""}">${esc(v)}</td>`;
+  };
+  $("table").innerHTML = `<table><thead><tr>${headers.map((h, i) =>
+    `<th data-sort="${i}">${esc(h)}${sortCol === i ? (sortDir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map((r) => `<tr data-row="${data.rows.indexOf(r)}">${r.map(cell).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+// จัดกลุ่มตามประเภท และรวมคู่ที่สมัครแยกกัน (A ใส่ B เป็น partner, B ใส่ A) ให้เป็นทีมเดียว
+function teams(rows) {
+  const { meta } = data;
+  const groups = {};
+  rows.forEach((r) => meta.cats.forEach((ci, k) => {
+    const cat = r[ci];
+    if (!cat || (filterCat && cat !== filterCat)) return;
+    const player = meta.name >= 0 ? r[meta.name] : "";
+    const pi = meta.partners[k];
+    const partner = pi >= 0 && !noName(r[pi]) ? r[pi] : "";
+    const list = (groups[cat] ||= []);
+    const dup = partner && list.find((t) => same(t.partner, player) && same(t.player, partner));
+    if (dup) { dup.partner = player; dup.partnerRow = r; }
+    else list.push({ player, partner, row: r, partnerRow: null });
+  }));
+  return groups;
+}
+
+function listGroups(rows) {
+  const g = teams(rows);
+  return Object.keys(g).sort((a, b) => g[b].length - g[a].length || a.localeCompare(b)).map((c) => [c, g[c]]);
+}
+
+function renderList(rows) {
+  const { meta } = data;
+  const registered = data.rows.map((r) => r[meta.name]).filter(Boolean);
+  const person = (name, row) => {
+    if (row) return `<span class="pname" data-row="${data.rows.indexOf(row)}">${esc(name)}</span>`;
+    const reg = registered.find((n) => same(n, name));
+    if (reg) return `<span class="pname" data-row="${data.rows.findIndex((r) => r[meta.name] === reg)}">${esc(name)}</span>`;
+    return `<span class="pname">${esc(name)}</span> <span class="tag">ยังไม่ลงทะเบียน</span>`;
+  };
+  const groups = listGroups(rows);
+  if (!groups.length) { $("table").innerHTML = `<div class="state">ไม่พบคอลัมน์ประเภท</div>`; return; }
+  $("table").innerHTML = `<div class="groups">${groups.map(([c, list]) => {
+    const unit = list.some((t) => t.partner) ? "ทีม" : "คน";
+    return `<section class="group"><h3>${esc(c)} <span class="muted">${list.length} ${unit}</span></h3><ol>${list.map((t, i) =>
+      `<li><span class="n">${i + 1}</span><div>${person(t.player, t.row)}${t.partner ? ` &amp; ${person(t.partner, t.partnerRow)}` : ""}</div></li>`).join("")}</ol></section>`;
+  }).join("")}</div>`;
+}
+
+function showRow(r) {
+  const { headers, meta } = data;
+  $("rowTitle").textContent = meta.name >= 0 ? r[meta.name] : "รายละเอียด";
+  $("rowBody").innerHTML = headers.map((h, i) => {
+    let v = r[i];
+    if (!v) return "";
+    const id = driveId(v);
+    if (id) v = `<a class="link" href="${esc(v)}" target="_blank"><img loading="lazy" src="https://drive.google.com/thumbnail?id=${id}&sz=w400" alt="" onerror="this.replaceWith('เปิดไฟล์ ↗')"></a>`;
+    else if (/^https?:\/\//.test(v)) v = `<a class="link" href="${esc(v)}" target="_blank">เปิด ↗</a>`;
+    else v = esc(v);
+    return `<div class="k">${esc(h)}</div><div class="v">${v}</div>`;
+  }).join("");
+  $("rowDlg").showModal();
+}
+
+function exportCSV() {
+  const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const out = view === "list"
+    ? [["Category", "#", "Player", "Partner"], ...listGroups(filtered()).flatMap(([c, list]) => list.map((t, i) => [c, i + 1, t.player, t.partner]))]
+    : [data.headers, ...filtered()];
+  const csv = out.map((r) => r.map(q).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
+  a.download = (sheets()[active].name || "sheet") + ".csv";
+  a.click();
+}
+
+function switchTo(i) {
+  active = i; data = null; filterCat = null; sortCol = null; $("q").value = "";
+  renderTabs(); load();
+}
+
+// events
+$("tabs").onclick = (e) => {
+  const del = e.target.dataset.del;
+  if (del !== undefined) {
+    if (!confirm("ลบชีตนี้ออกจากรายการ?")) return;
+    userSheets.splice(del - DEFAULT_SHEETS.length, 1);
+    store.set(STORE_KEY, userSheets);
+    return switchTo(0);
+  }
+  const t = e.target.closest(".tab");
+  if (t) switchTo(+t.dataset.i);
+};
+$("chips").onclick = (e) => {
+  const c = e.target.closest(".chip");
+  if (c) { filterCat = c.dataset.cat || null; render(); }
+};
+$("table").onclick = (e) => {
+  const th = e.target.closest("th");
+  if (th) { const i = +th.dataset.sort; sortDir = sortCol === i ? -sortDir : 1; sortCol = i; return render(); }
+  const tr = e.target.closest("[data-row]");
+  if (tr) showRow(data.rows[+tr.dataset.row]);
+};
+function renderView() {
+  [...$("view").children].forEach((b) => b.classList.toggle("on", b.dataset.v === view));
+}
+$("view").onclick = (e) => {
+  const v = e.target.dataset.v;
+  if (!v) return;
+  view = v; store.set(VIEW_KEY, v); renderView();
+  data && render();
+};
+renderView();
+$("q").oninput = () => data && render();
+$("refresh").onclick = load;
+$("csv").onclick = () => data && exportCSV();
+$("addBtn").onclick = () => { $("addForm").reset(); $("addDlg").showModal(); };
+$("addDlg").onclose = () => {
+  if ($("addDlg").returnValue !== "ok") return;
+  const s = { name: $("fName").value.trim(), url: $("fUrl").value.trim(), tab: $("fTab").value.trim() };
+  try { sheetUrl(s); } catch (e) { return alert(e.message); }
+  userSheets.push(s);
+  store.set(STORE_KEY, userSheets);
+  switchTo(sheets().length - 1);
+};
+
+load();
+setInterval(() => document.visibilityState === "visible" && load(), AUTO_REFRESH_MS);
+</script>
+</body>
+</html>
