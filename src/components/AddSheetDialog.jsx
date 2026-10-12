@@ -29,7 +29,8 @@ export default function AddSheetDialog({ open, onClose, onAdd }) {
         <button className="btn primary" disabled={busy}>{busy ? "Saving…" : "Add sheet"}</button>
       </>}>
       <p className="muted" style={{ margin: 0 }}>
-        Everyone will see this sheet. It must be shared as "Anyone with the link → Viewer".
+        Everyone with the password will see this sheet. It can stay private — just make sure the Google account
+        that owns the Apps Script can open it.
       </p>
       <label>Display name</label>
       <input value={form.name} onChange={set("name")} placeholder="e.g. October Tournament" required />

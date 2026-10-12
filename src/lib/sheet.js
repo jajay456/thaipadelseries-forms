@@ -1,7 +1,8 @@
 // ===== รายการชีตที่ทุกคนเห็น =====
 // เก็บในชีต Dashboard Config ผ่าน Google Apps Script (โค้ดอยู่ที่ apps-script/Code.gs)
-// - ทุกคนอ่านได้ · เพิ่ม/ลบชีตบนเว็บได้เฉพาะคนที่มี ADMIN_KEY (ปุ่ม Admin)
-// - ใส่ Web app URL (ลงท้าย /exec) ที่นี่ · เว้นว่าง = ใช้ DEFAULT_SHEETS และปิดการเพิ่ม/ลบ
+// - ต้องใส่รหัสก่อนดูข้อมูล: VIEW_KEY = ดูอย่างเดียว · ADMIN_KEY = ดู + แก้ (ตั้งใน Script properties)
+// - สคริปต์อ่านชีตฟอร์มให้ → ชีตฟอร์มตั้งเป็น Restricted ได้
+// - ใส่ Web app URL (ลงท้าย /exec) ที่นี่ · เว้นว่าง = อ่านชีตตรงแบบ CSV (ชีตต้องแชร์แบบ Anyone with the link) และไม่มีรหัส
 export const CONFIG_API_URL = "https://script.google.com/macros/s/AKfycbzQaifwdV6XtSM1PhB3tRmfgAIe1gNmBA2ptZZRYjMGsTqY2SZUZiaSmB61fgyrEks/exec";
 
 // ใช้เมื่อยังไม่ได้ตั้ง CONFIG_API_URL
@@ -73,12 +74,9 @@ export function detect(headers) {
   };
 }
 
-export async function fetchSheet(sheet) {
-  const res = await fetch(sheetUrl(sheet));
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const text = await res.text();
-  if (text.trim().startsWith("<")) throw new Error("Can't read the sheet — make sure it's shared as 'Anyone with the link'");
-  const rows = parseCSV(text).filter((r) => r.some((c) => c.trim()));
+// แถวดิบของชีต (แถวแรก = หัวคอลัมน์) → { headers, rows, meta }
+function toData(all) {
+  const rows = all.map((r) => r.map((c) => String(c ?? ""))).filter((r) => r.some((c) => c.trim()));
   const headers = rows.shift() || [];
   // ซ่อนคอลัมน์ที่ว่างทั้งคอลัมน์
   const keep = headers.map((_, i) => i).filter((i) => headers[i].trim() && rows.some((r) => (r[i] || "").trim()));
@@ -90,8 +88,28 @@ export async function fetchSheet(sheet) {
   return data;
 }
 
-async function callApi(init, query = "") {
-  const res = await fetch(CONFIG_API_URL + query, init);
+// อ่านชีตตรงแบบ CSV (ใช้เมื่อไม่ได้ตั้ง CONFIG_API_URL)
+async function fetchSheetCSV(sheet) {
+  const res = await fetch(sheetUrl(sheet));
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  if (text.trim().startsWith("<")) throw new Error("Can't read the sheet — make sure it's shared as 'Anyone with the link'");
+  return toData(parseCSV(text));
+}
+
+// ข้อมูลฟอร์ม + ค่าที่แก้ในหน้า Manage ของชีตนี้ → { data, records }
+// มี CONFIG_API_URL: ขอผ่าน Apps Script พร้อมรหัส (ชีตเป็นส่วนตัวได้) · ไม่มี: อ่าน CSV ตรง
+export async function loadSheet(sheet, key) {
+  if (!CONFIG_API_URL) return { data: await fetchSheetCSV(sheet), records: {} };
+  const out = await post({ action: "data", key, sheet: { url: sheet.url, tab: sheet.tab || "" }, sheetKey: sheetKey(sheet) });
+  return { data: toData(out.values || []), records: out.records || {} };
+}
+
+// ใช้ในเทสต์/สคริปต์เดิม
+export const fetchSheet = async (sheet, key) => (await loadSheet(sheet, key)).data;
+
+async function callApi(init) {
+  const res = await fetch(CONFIG_API_URL, init);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const out = await res.json().catch(() => { throw new Error("Unexpected response from the config API"); });
   if (!out.ok) throw new Error(out.error || "Config API error");
@@ -101,12 +119,15 @@ async function callApi(init, query = "") {
 // POST แบบ text/plain = simple request (ไม่มี CORS preflight ซึ่ง Apps Script ไม่รองรับ)
 const post = (body) => callApi({ method: "POST", body: JSON.stringify(body) });
 
-export async function fetchSheetList() {
+export async function fetchSheetList(key) {
   if (!CONFIG_API_URL) return DEFAULT_SHEETS;
-  return (await callApi()).sheets;
+  return (await post({ action: "list", key })).sheets;
 }
 
-export const checkAdminKey = (key) => post({ action: "check", key });
+// ตรวจรหัส → "admin" | "viewer" (รหัสผิด = throw "Wrong password")
+export const checkKey = async (key) => (await post({ action: "check", key })).role;
+// รหัสผิด/หมดสิทธิ์ (เช่น ถูกเปลี่ยนรหัส) → ต้องเข้าสู่ระบบใหม่
+export const isAuthError = (e) => /wrong password|sign in required|admin only|admin key/i.test(e?.message || "");
 
 // แต่ละชีต (ไฟล์ + แท็บ) มีข้อมูล management ของตัวเอง — ใส่ชีตใหม่ = เริ่มจากว่าง
 export const sheetKey = ({ url, tab }) => {
@@ -114,16 +135,6 @@ export const sheetKey = ({ url, tab }) => {
   const gid = (url.match(/[#&?]gid=(\d+)/) || [])[1];
   return `${id}|${tab || (gid ? "gid:" + gid : "")}`;
 };
-
-// ค่าที่แอดมินแก้ไว้ { playerKey: data } — แอดมินได้ทุกช่อง, คนทั่วไปได้เฉพาะช่องสาธารณะ
-export async function fetchMgmt(sheet, adminKey) {
-  if (!CONFIG_API_URL) return {};
-  const key = sheetKey(sheet);
-  const out = adminKey
-    ? await post({ action: "mgmtGet", key: adminKey, sheet: key })
-    : await callApi(undefined, `?mgmt=${encodeURIComponent(key)}`);
-  return out.records || {};
-}
 
 // บันทึกผู้เล่น 1 คน · data = null → ลบ (กลับไปใช้ค่าจากฟอร์ม) · คืนค่า records ทั้งหมดล่าสุด
 export const saveMgmt = async (adminKey, sheet, player, data) =>

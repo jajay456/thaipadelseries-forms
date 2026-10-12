@@ -1,6 +1,6 @@
 import { STATUS, buildPeople } from "./people.js";
 import { REMARK_STATUS, applyMgmt } from "./manage.js";
-import { fetchMgmt, fetchSheet } from "./sheet.js";
+import { loadSheet } from "./sheet.js";
 
 // แถว CSV ของผู้เล่น — ใช้ทั้ง CSV หน้า Manage และ CSV รวมทุกชีต · remark ใส่เฉพาะแอดมิน
 export const playerHeaders = (admin) => [
@@ -17,11 +17,10 @@ export const playerRow = (p, admin) => [
 
 // โหลดทุกชีต (พร้อมค่าที่แก้ในหน้า Manage ของแต่ละชีต) แล้วรวมรายชื่อผู้เล่นเป็นตารางเดียว
 // ชีตที่โหลดไม่ได้จะถูกข้าม และคืนชื่อกลับไปใน failed
-export async function exportAllSheets(sheets, adminKey) {
-  const admin = !!adminKey;
+export async function exportAllSheets(sheets, key, admin) {
   const results = await Promise.all(sheets.map(async (s) => {
     try {
-      const [data, records] = await Promise.all([fetchSheet(s), fetchMgmt(s, adminKey).catch(() => ({}))]);
+      const { data, records } = await loadSheet(s, key);
       return { s, people: applyMgmt(buildPeople(data), records, data.meta).people };
     } catch (e) {
       return { s, error: e.message };

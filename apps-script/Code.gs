@@ -4,17 +4,19 @@
  * ติดตั้ง (ครั้งเดียว):
  * 1. เปิดชีต Dashboard Config → Extensions → Apps Script → วางโค้ดนี้แทนของเดิม → Save
  * 2. Project Settings (รูปเฟือง) → Script properties → Add property
- *      Property: ADMIN_KEY   Value: รหัสผ่านที่ต้องการ (ใช้ตอนกด Admin บนเว็บ)
+ *      ADMIN_KEY = รหัสแอดมิน (ดู + แก้ไข)
+ *      VIEW_KEY  = รหัสคนดู (ดูอย่างเดียว) — ทุกคนต้องใส่รหัสใดรหัสหนึ่งก่อนเห็นข้อมูล
  * 3. Deploy → New deployment → Type: Web app
  *      Execute as: Me   ·   Who has access: Anyone   → Deploy → อนุญาตสิทธิ์
  * 4. คัดลอก Web app URL (ลงท้าย /exec) ไปใส่ CONFIG_API_URL ใน src/lib/sheet.js
  *
- * ทุกคนอ่านรายการชีตได้ (GET) — แก้ได้เฉพาะคนที่มี ADMIN_KEY (POST)
+ * ทุกคำขอต้องมีรหัส: VIEW_KEY อ่านได้ · ADMIN_KEY อ่าน + แก้ได้
+ * สคริปต์อ่านชีตฟอร์มแทนเว็บ (รันในบัญชีเจ้าของ) → ตั้งชีตฟอร์มเป็น Restricted ได้ ข้อมูลไม่หลุดผ่านลิงก์
  *
  * ข้อมูลหน้า Management เก็บในแท็บ "Management" (สร้างให้อัตโนมัติ)
  *   1 แถว = ผู้เล่น 1 คนของชีต 1 ชีต: Sheet | Player | Data (JSON) | Updated
  *   ชีตใหม่ = sheet key ใหม่ = เริ่มจากว่าง · ไม่มีการแก้ชีตฟอร์ม
- *   ทุกคนอ่านได้เฉพาะช่องสาธารณะ — remark/email/phone อ่านได้เฉพาะแอดมิน
+ *   คนดูได้เฉพาะช่องสาธารณะ — remark/email/phone ที่แก้ไว้ อ่านได้เฉพาะแอดมิน
  */
 
 function sheet_() {
@@ -79,25 +81,67 @@ function mgmtSave_(sheetKey, playerKey, data) {
   range.setValues(row);
 }
 
-function doGet(e) {
-  const sheetKey = e && e.parameter && e.parameter.mgmt;
-  if (sheetKey) return json_({ ok: true, records: mgmtRecords_(sheetKey, false) });
-  return json_({ ok: true, sheets: list_() });
+// "admin" | "viewer" | null ตามรหัสที่ส่งมา
+function role_(key) {
+  const p = PropertiesService.getScriptProperties();
+  const admin = p.getProperty("ADMIN_KEY"), view = p.getProperty("VIEW_KEY");
+  if (key && admin && key === admin) return "admin";
+  if (key && view && key === view) return "viewer";
+  return null;
+}
+
+// อ่านชีตฟอร์ม — เฉพาะชีตที่อยู่ในรายการเท่านั้น (กันขออ่านไฟล์อื่นในบัญชีเจ้าของ)
+function readSheet_(s) {
+  const allowed = list_().some((x) => x.url === s.url && String(x.tab || "") === String(s.tab || ""));
+  if (!allowed) throw new Error("Sheet is not in the list");
+  const ss = SpreadsheetApp.openByUrl(s.url);
+  let sh = s.tab ? ss.getSheetByName(s.tab) : null;
+  if (s.tab && !sh) throw new Error('Tab "' + s.tab + '" not found');
+  if (!sh) {
+    const gid = (String(s.url).match(/[#&?]gid=(\d+)/) || [])[1];
+    if (gid) sh = ss.getSheets().find((x) => String(x.getSheetId()) === gid) || null;
+  }
+  return (sh || ss.getSheets()[0]).getDataRange().getDisplayValues();
+}
+
+function doGet() {
+  return json_({ ok: false, error: "Sign in required" });
 }
 
 function doPost(e) {
   let body = {};
   try { body = JSON.parse((e.postData && e.postData.contents) || "{}"); } catch (err) {}
-  const key = PropertiesService.getScriptProperties().getProperty("ADMIN_KEY");
-  if (!key) return json_({ ok: false, error: "ADMIN_KEY is not set in Script properties" });
-  if (body.key !== key) return json_({ ok: false, error: "Wrong admin key" });
+  const p = PropertiesService.getScriptProperties();
+  if (!p.getProperty("ADMIN_KEY")) return json_({ ok: false, error: "ADMIN_KEY is not set in Script properties" });
+  const role = role_(body.key);
+  if (!role) return json_({ ok: false, error: "Wrong password" });
+  const admin = role === "admin";
 
-  if (body.action === "check") return json_({ ok: true });
+  if (body.action === "check") return json_({ ok: true, role: role });
+
+  if (body.action === "list") return json_({ ok: true, sheets: list_() });
+
+  // ข้อมูลฟอร์ม + ค่าที่แก้ในหน้า Manage ในครั้งเดียว
+  if (body.action === "data") {
+    if (!body.sheet || !body.sheet.url) return json_({ ok: false, error: "Missing sheet" });
+    try {
+      return json_({
+        ok: true,
+        values: readSheet_(body.sheet),
+        records: body.sheetKey ? mgmtRecords_(String(body.sheetKey), admin) : {},
+      });
+    } catch (err) {
+      return json_({ ok: false, error: String(err.message || err) });
+    }
+  }
 
   if (body.action === "mgmtGet") {
     if (!body.sheet) return json_({ ok: false, error: "Missing sheet" });
-    return json_({ ok: true, records: mgmtRecords_(String(body.sheet), true) });
+    return json_({ ok: true, records: mgmtRecords_(String(body.sheet), admin) });
   }
+
+  // ต่อจากนี้แก้ข้อมูล — เฉพาะแอดมิน
+  if (!admin) return json_({ ok: false, error: "Admin only" });
 
   if (body.action === "mgmtSave") {
     if (!body.sheet || !body.player) return json_({ ok: false, error: "Missing sheet or player" });

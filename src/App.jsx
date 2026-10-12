@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AUTO_REFRESH_MS, CATEGORIES, CONFIG_API_URL, PRICES, checkAdminKey, downloadCSV, fetchMgmt, fetchSheet, fetchSheetList, filterRows, saveMgmt, saveSheetList, store } from "./lib/sheet.js";
+import { AUTO_REFRESH_MS, CATEGORIES, CONFIG_API_URL, PRICES, checkKey, downloadCSV, fetchSheetList, filterRows, isAuthError, loadSheet, saveMgmt, saveSheetList, store } from "./lib/sheet.js";
 import { applyMgmt, newManualKey, peopleCategoryCounts, priceChecks, teamsFromPeople } from "./lib/manage.js";
 import Tabs from "./components/Tabs.jsx";
 import Stats from "./components/Stats.jsx";
@@ -13,13 +13,13 @@ import { STATUS, buildPayments, buildPeople } from "./lib/people.js";
 import RowDialog from "./components/RowDialog.jsx";
 import Icon from "./components/Icon.jsx";
 import AddSheetDialog from "./components/AddSheetDialog.jsx";
-import AdminDialog from "./components/AdminDialog.jsx";
+import SignIn from "./components/SignIn.jsx";
 import ManageView from "./components/ManageView.jsx";
 import Charts from "./components/Charts.jsx";
 import AddPlayerDialog from "./components/AddPlayerDialog.jsx";
 import useTheme from "./lib/useTheme.js";
 
-const VIEW_KEY = "sheetDashboard.view", ADMIN_KEY = "sheetDashboard.adminKey";
+const VIEW_KEY = "sheetDashboard.view", AUTH_KEY = "sheetDashboard.auth", OLD_ADMIN_KEY = "sheetDashboard.adminKey";
 const VIEWS = [["table", "Table", "table"], ["list", "Teams", "users"], ["people", "Players", "user"], ["charts", "Charts", "chart"]];
 const MANAGE_VIEW = ["manage", "Manage", "edit"]; // เฉพาะแอดมิน
 
@@ -27,10 +27,18 @@ export default function App() {
   // รายการชีตมาจาก Apps Script (ดู CONFIG_API_URL ใน lib/sheet.js) — ทุกคนเห็นเหมือนกัน แก้ได้เฉพาะแอดมิน
   const [sheets, setSheets] = useState(null);
   const [listError, setListError] = useState(null);
-  // รหัสแอดมินเก็บในเครื่องนี้เท่านั้น — Apps Script ตรวจซ้ำทุกครั้งที่บันทึก
-  const [adminKey, setAdminKey] = useState(() => (CONFIG_API_URL && store.get(ADMIN_KEY)) || "");
+  // รหัสที่ใช้เข้าสู่ระบบ { key, role } — เก็บในเครื่องนี้ · Apps Script ตรวจรหัสทุกคำขอ
+  //   role "viewer" = ดูอย่างเดียว · "admin" = ดู + แก้
+  const [auth, setAuth] = useState(() => {
+    if (!CONFIG_API_URL) return null;
+    const a = store.get(AUTH_KEY);
+    if (a?.key) return a;
+    const old = store.get(OLD_ADMIN_KEY); // รหัสแอดมินจากเวอร์ชันก่อน
+    return old ? { key: old, role: "admin" } : null;
+  });
+  const authKey = auth?.key || "";
+  const adminKey = auth?.role === "admin" ? auth.key : "";
   const [adding, setAdding] = useState(false);
-  const [signingIn, setSigningIn] = useState(false);
   const [addingPlayer, setAddingPlayer] = useState(false);
   // ค่าที่แอดมินแก้ในหน้า Manage ของชีตที่เลือก { playerKey: data } — วางทับข้อมูลจากฟอร์มทุกครั้งที่โหลด
   const [records, setRecords] = useState({});
@@ -60,39 +68,41 @@ export default function App() {
   const sheet = sheets?.[Math.min(active, sheets.length - 1)];
   const { name: sName, url: sUrl, tab: sTab } = sheet || {};
 
+  const signOut = useCallback(() => {
+    setAuth(null); store.set(AUTH_KEY, null); store.set(OLD_ADMIN_KEY, null);
+    setSheets(null); setData(null); setRecords({});
+  }, []);
+
   const loadList = useCallback(async () => {
+    if (CONFIG_API_URL && !authKey) return;
     try {
-      const list = await fetchSheetList();
+      const list = await fetchSheetList(authKey);
       setSheets((old) => (JSON.stringify(old) === JSON.stringify(list) ? old : list));
       setListError(null);
     } catch (e) {
+      if (isAuthError(e)) return signOut();
       setListError(e.message);
     }
-  }, []);
+  }, [authKey, signOut]);
 
   const load = useCallback(async () => {
-    if (!sUrl) return;
+    if (!sUrl || (CONFIG_API_URL && !authKey)) return;
     setLoading(true);
     try {
-      // ข้อมูลฟอร์ม + ค่าที่แก้ไว้ โหลดพร้อมกัน · โหลดค่าที่แก้ไม่ได้ → ใช้ค่าเดิมที่มี
-      const [d, m] = await Promise.all([
-        fetchSheet({ url: sUrl, tab: sTab }),
-        fetchMgmt({ url: sUrl, tab: sTab }, adminKey).catch((e) => {
-          if (/admin key/i.test(e.message)) { setAdminKey(""); store.set(ADMIN_KEY, null); }
-          return null;
-        }),
-      ]);
+      // ข้อมูลฟอร์ม + ค่าที่แก้ไว้ มาในคำขอเดียว
+      const { data: d, records: m } = await loadSheet({ url: sUrl, tab: sTab }, authKey);
       setData(d);
-      if (m) setRecords(m);
+      setRecords(m);
       setError(null);
       setUpdated("Updated " + new Date().toLocaleTimeString("en-GB"));
     } catch (e) {
+      if (isAuthError(e)) return signOut();
       setData(null);
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [sUrl, sTab, adminKey]);
+  }, [sUrl, sTab, authKey, signOut]);
 
   // ข้อมูลชีตที่เลือก: โหลดตอนเปิด/เปลี่ยนชีต และทุก AUTO_REFRESH_MS
   useEffect(() => {
@@ -114,10 +124,19 @@ export default function App() {
   const refresh = () => { loadList(); load(); };
 
   const signIn = async (key) => {
-    await checkAdminKey(key);
-    setAdminKey(key); store.set(ADMIN_KEY, key); setSigningIn(false);
+    const role = await checkKey(key);
+    const a = { key, role };
+    setAuth(a); store.set(AUTH_KEY, a); store.set(OLD_ADMIN_KEY, null);
   };
-  const signOut = () => { setAdminKey(""); store.set(ADMIN_KEY, null); };
+
+  // ตรวจรหัสที่จำไว้อีกครั้งตอนเปิดเว็บ (เผื่อรหัสถูกเปลี่ยน หรือสิทธิ์เปลี่ยน)
+  useEffect(() => {
+    if (!authKey) return;
+    checkKey(authKey).then(
+      (role) => role !== auth.role && setAuth((a) => { const n = { ...a, role }; store.set(AUTH_KEY, n); return n; }),
+      (e) => isAuthError(e) && signOut(),
+    );
+  }, [authKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // บันทึกรายการชีตใหม่ให้ทุกคน — รหัสผิด (เช่น ถูกเปลี่ยน) จะออกจากโหมดแอดมิน
   const saveList = async (list) => {
@@ -126,7 +145,7 @@ export default function App() {
       return true;
     } catch (e) {
       alert("Couldn't save: " + e.message);
-      if (/admin key/i.test(e.message)) signOut();
+      if (isAuthError(e)) signOut();
       return false;
     }
   };
@@ -154,7 +173,7 @@ export default function App() {
       return true;
     } catch (e) {
       alert("Couldn't save: " + e.message);
-      if (/admin key/i.test(e.message)) signOut();
+      if (isAuthError(e)) signOut();
       load();
       return false;
     }
@@ -223,7 +242,7 @@ export default function App() {
 
   // CSV รวมรายชื่อผู้เล่นจากทุกชีต
   const exportAll = async () => {
-    const { rows: out, failed } = await exportAllSheets(sheets, adminKey);
+    const { rows: out, failed } = await exportAllSheets(sheets, authKey, !!adminKey);
     if (failed.length) alert("Skipped (couldn't load):\n" + failed.join("\n"));
     if (out.length > 1) downloadCSV(out, "all-sheets-" + new Date().toISOString().slice(0, 10) + ".csv");
   };
@@ -250,6 +269,9 @@ export default function App() {
       onSort={(i) => setSort((s) => ({ col: i, dir: s.col === i ? -s.dir : 1 }))} />
   );
 
+  // ต้องใส่รหัสก่อนเห็นข้อมูล
+  if (CONFIG_API_URL && !auth) return <SignIn onSignIn={signIn} />;
+
   return (
     <>
       <header>
@@ -269,7 +291,7 @@ export default function App() {
           <button className={`btn label-sm ${loading ? "spin" : ""}`} onClick={refresh} aria-label="Refresh">
             <Icon name="refresh" /><span className="hide-sm">Refresh</span>
           </button>
-          {CONFIG_API_URL && (adminKey ? <>
+          {adminKey && <>
             {sheet && (
               <button className="btn label-sm danger" onClick={() => removeSheet(Math.min(active, sheets.length - 1))}
                 aria-label="Remove sheet" title={`Remove "${sName}" for everyone`}>
@@ -279,14 +301,13 @@ export default function App() {
             <button className="btn primary label-sm" onClick={() => setAdding(true)} disabled={!sheets} aria-label="Add sheet">
               <Icon name="plus" /><span className="hide-sm">Add sheet</span>
             </button>
-            <button className="btn icon-only" onClick={signOut} aria-label="Sign out of admin" title="Sign out of admin">
-              <Icon name="unlock" />
+          </>}
+          {CONFIG_API_URL && (
+            <button className="btn icon-only" onClick={signOut} aria-label="Sign out"
+              title={`Sign out (${adminKey ? "admin" : "viewer"}) — use another password to switch`}>
+              <Icon name="logout" />
             </button>
-          </> : (
-            <button className="btn icon-only" onClick={() => setSigningIn(true)} aria-label="Admin sign-in" title="Admin">
-              <Icon name="lock" />
-            </button>
-          ))}
+          )}
         </div>
       </header>
 
@@ -324,7 +345,6 @@ export default function App() {
       <RowDialog data={data} people={allPeople} target={openTarget} isAdmin={!!adminKey} checks={checks} onOpen={open} onClose={() => setOpenTarget(null)} />
       {CONFIG_API_URL && <>
         <AddSheetDialog open={adding} onClose={() => setAdding(false)} onAdd={addSheet} />
-        <AdminDialog open={signingIn} onClose={() => setSigningIn(false)} onSignIn={signIn} />
         {adminKey && <AddPlayerDialog open={addingPlayer} onClose={() => setAddingPlayer(false)} onAdd={addPlayer} />}
       </>}
     </>
