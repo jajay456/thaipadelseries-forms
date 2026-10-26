@@ -1,5 +1,6 @@
 import { noName, same } from "./teams.js";
 import { num } from "./sheet.js";
+import { dateTime } from "./dates.js";
 
 // รายชื่อทุกคน (ทั้งคนที่กรอกฟอร์มและ partner ที่ถูกระบุชื่อ) พร้อมประเภทที่ลงและสถานะการจ่ายเงิน
 // status (อัตโนมัติจากฟอร์ม — แอดมินแก้ทับได้ในหน้า Manage ดู lib/manage.js): "paid" = มียอดเงินของตัวเองหรือมีคนจ่ายให้, "check" = มีสลิปแต่ยอดเป็น 0 (และไม่มีใครจ่ายให้), "unpaid" = ยังไม่จ่าย
@@ -61,6 +62,12 @@ export function buildPeople(data) {
       if (partner) {
         const q = add(partner);
         if (!q.cats.get(r[ci])) q.cats.set(r[ci], p.name);
+        // partner ที่ไม่ได้กรอกฟอร์มเอง → ใช้วันที่คู่ของตัวเองลงชื่อให้ (ครั้งแรกสุด)
+        if (!q.row && meta.time >= 0 && r[meta.time] &&
+          (!q.registered || dateTime(r[meta.time]) < dateTime(q.registered))) {
+          q.registered = r[meta.time];
+          q.registeredBy = p.name;
+        }
       }
     });
 
@@ -77,6 +84,9 @@ export function buildPeople(data) {
   const canon = (n) => (n && people.find((x) => same(x.name, n))?.name) || n;
   return people.map((p) => ({
     ...p,
+    // วันที่ลงทะเบียน: ของแถวตัวเอง หรือของ partner ที่ลงชื่อให้
+    registered: p.row ? (meta.time >= 0 ? p.row[meta.time] || null : null) : p.registered || null,
+    registeredBy: p.row ? null : canon(p.registeredBy) || null,
     cats: [...p.cats].map(([cat, partner]) => ({ cat, partner: canon(partner) })),
     // อยู่ในยอดจ่ายมากกว่า 1 ยอด (จ่ายเอง + มีคนจ่ายให้ หรือหลายคนจ่ายให้) → อาจจ่ายซ้ำ
     double: p.paidBy.size > 1,

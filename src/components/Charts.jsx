@@ -1,16 +1,9 @@
 import { useState } from "react";
 import { CATEGORIES, PRICES, fmt } from "../lib/sheet.js";
+import { dateDay } from "../lib/dates.js";
 
 // ---------- data ----------
 
-// Google Forms timestamp: "10/8/2026 10:36:05" (M/D/YYYY) → "2026-10-08"
-const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const dayOf = (v) => {
-  const m = String(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (m) return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
-  const d = new Date(v);
-  return isNaN(d) ? null : isoLocal(d);
-};
 const dayLabel = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 
 // ยอดที่ควรจ่ายตามราคา (ตามจำนวนประเภท)
@@ -33,7 +26,7 @@ function useChartData(people, meta) {
 
   const days = {};
   people.forEach((p) => {
-    const d = p.row && meta.time >= 0 ? dayOf(p.row[meta.time]) : null;
+    const d = p.row && meta.time >= 0 ? dateDay(p.row[meta.time]) : null;
     if (d) days[d] = (days[d] || 0) + 1;
   });
   // เติมวันที่ไม่มีคนสมัครให้เป็น 0 เพื่อให้แกนเวลาต่อเนื่อง

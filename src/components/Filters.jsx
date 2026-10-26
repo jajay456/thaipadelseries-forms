@@ -11,7 +11,7 @@ function FilterSelect({ label, value, onChange, allLabel = "All", options }) {
       <select value={value ?? ""} onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)} aria-label={label}>
         <option value="">{allLabel}</option>
         {options.map(([v, text, n]) => (
-          <option key={v} value={v} disabled={!n && String(value) !== String(v)}>{text} ({n})</option>
+          <option key={v} value={v} disabled={n === 0 && String(value) !== String(v)}>{n == null ? text : `${text} (${n})`}</option>
         ))}
       </select>
     </label>
@@ -19,9 +19,12 @@ function FilterSelect({ label, value, onChange, allLabel = "All", options }) {
 }
 
 // ตัวกรองทั้งหมดในแถวเดียว · Payment / Categories แสดงเฉพาะหน้า Players
-export default function Filters({ cats, filterCat, onCat, people, view, payStatus, onPayStatus, catCount, onCatCount, maxCats }) {
+export default function Filters({
+  cats, filterCat, onCat, people, view, payStatus, onPayStatus, catCount, onCatCount, maxCats,
+  hasTimestamp, regOrder, onRegOrder,
+}) {
   const players = view === "people";
-  const active = filterCat || (players && (payStatus || catCount));
+  const active = filterCat || (players && (payStatus || catCount || regOrder));
   return (
     <div className="filters">
       {cats.length > 0 && (
@@ -37,8 +40,14 @@ export default function Filters({ cats, filterCat, onCat, people, view, payStatu
           options={Array.from({ length: maxCats }, (_, i) => i + 1)
             .map((n) => [n, `${n} ${n === 1 ? "category" : "categories"}`, people.filter((p) => p.cats.length === n).length])} />
       )}
+      {players && hasTimestamp && (
+        <FilterSelect label="Sort" allLabel="Name" value={regOrder} onChange={onRegOrder}
+          options={[["asc", "Earliest registered"], ["desc", "Latest registered"]]} />
+      )}
       {active && (
-        <button className="link-btn muted" onClick={() => { onCat(null); onPayStatus(null); onCatCount(null); }}>Clear</button>
+        <button className="link-btn muted" onClick={() => {
+          onCat(null); onPayStatus(null); onCatCount(null); onRegOrder(null);
+        }}>Clear</button>
       )}
     </div>
   );

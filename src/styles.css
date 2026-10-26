@@ -249,6 +249,7 @@ a.link { color: var(--accent); text-decoration: none; font-weight: 500; }
 .people-list li.clickable:hover { background: var(--accent-soft); }
 .people-list .n { color: var(--muted); min-width: 22px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
 .pl-main { flex: 1; min-width: 0; }
+.registered-date { display: block; margin-top: 3px; }
 .pl-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; text-align: right; max-width: 220px; }
 .pill-sub { opacity: .75; }
 .cat-count { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }

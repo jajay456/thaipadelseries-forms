@@ -18,6 +18,7 @@ import ManageView from "./components/ManageView.jsx";
 import Charts from "./components/Charts.jsx";
 import AddPlayerDialog from "./components/AddPlayerDialog.jsx";
 import useTheme from "./lib/useTheme.js";
+import { dateTime } from "./lib/dates.js";
 
 const VIEW_KEY = "sheetDashboard.view", AUTH_KEY = "sheetDashboard.auth", OLD_ADMIN_KEY = "sheetDashboard.adminKey";
 const VIEWS = [["table", "Table", "table"], ["list", "Teams", "users"], ["people", "Players", "user"], ["charts", "Charts", "chart"]];
@@ -50,9 +51,10 @@ export default function App() {
   const [q, setQ] = useState("");
   const [filterCat, setFilterCat] = useState(null);
   const [sort, setSort] = useState({ col: null, dir: 1 });
-  // ตัวกรองหน้า Players: สถานะการจ่ายเงิน และจำนวนประเภทที่ลง (1, 2, 3 …)
+  // ตัวกรองหน้า Players: สถานะการจ่ายเงิน จำนวนประเภทที่ลง และการเรียงตามวันที่สมัคร
   const [payStatus, setPayStatus] = useState(null);
   const [catCount, setCatCount] = useState(null);
+  const [regOrder, setRegOrder] = useState(null); // null = ตามชื่อ · "asc" สมัครก่อน → ล่าสุด · "desc" ล่าสุด → ก่อน
   // ?view=list หรือ ?view=people ในลิงก์ใช้เปิดมุมมองนั้นตรง ๆ ได้ ไม่งั้นจำค่าล่าสุด
   const [viewPref, setView] = useState(() => {
     const v = new URLSearchParams(location.search).get("view") || store.get(VIEW_KEY);
@@ -187,7 +189,7 @@ export default function App() {
 
   const switchTo = (i) => {
     setActive(i); setData(null); setError(null); setFilterCat(null); setSort({ col: null, dir: 1 }); setQ("");
-    setPayStatus(null); setCatCount(null);
+    setPayStatus(null); setCatCount(null); setRegOrder(null);
   };
 
   const changeView = (v) => { setView(v); store.set(VIEW_KEY, v); };
@@ -215,8 +217,16 @@ export default function App() {
         .some((v) => v && v.toLowerCase().includes(s))));
   }, [allPeople, q, filterCat]);
   const groups = useMemo(() => (view === "list" ? teamsFromPeople(people, filterCat) : []), [people, filterCat, view]);
-  const shownPeople = useMemo(() => people.filter((p) =>
-    (!payStatus || p.status === payStatus) && (!catCount || p.cats.length === catCount)), [people, payStatus, catCount]);
+  const shownPeople = useMemo(() => {
+    const list = people.filter((p) => (!payStatus || p.status === payStatus) && (!catCount || p.cats.length === catCount));
+    if (!regOrder) return list;
+    // คนที่ยังไม่มีวันที่สมัครอยู่ท้ายเสมอ · partner ใช้วันที่คู่ลงชื่อให้
+    const at = (p) => (p.registered ? dateTime(p.registered) : null);
+    const dir = regOrder === "desc" ? -1 : 1;
+    return list.map((p) => [p, at(p)])
+      .sort(([, a], [, b]) => (a == null) - (b == null) || (a == null ? 0 : (a - b) * dir))
+      .map(([p]) => p);
+  }, [people, payStatus, catCount, regOrder]);
   const cats = useMemo(() => peopleCategoryCounts(allPeople), [allPeople]);
 
   const exportCSV = () => {
@@ -224,8 +234,8 @@ export default function App() {
     const out = view === "manage"
       ? [["#", ...playerHeaders(true)], ...people.map((p, i) => [i + 1, ...playerRow(p, true)])]
       : view === "people"
-      ? [["#", "Name", "Registered", "Categories", "Category list", "Payment", "Amount (THB)", "Paid by"],
-        ...shownPeople.map((p, i) => [i + 1, p.name, p.row ? "Yes" : "No", p.cats.length,
+      ? [["#", "Name", "Registration date", "Categories", "Category list", "Payment", "Amount (THB)", "Paid by"],
+        ...shownPeople.map((p, i) => [i + 1, p.name, p.registered || "", p.cats.length,
           p.cats.map((c) => c.cat + (c.partner ? ` (with ${c.partner})` : "")).join("; "),
           STATUS[p.status].label, p.amount || "", p.paidBy.filter((n) => n !== p.name).join(", ")])]
       : view === "charts"
@@ -337,7 +347,8 @@ export default function App() {
         {data && (
           <Filters cats={cats} filterCat={filterCat} onCat={setFilterCat} people={people} view={view}
             payStatus={payStatus} onPayStatus={setPayStatus} catCount={catCount} onCatCount={setCatCount}
-            maxCats={Math.max(3, data.meta.cats.length, ...allPeople.map((p) => p.cats.length))} />
+            maxCats={Math.max(3, data.meta.cats.length, ...allPeople.map((p) => p.cats.length))}
+            hasTimestamp={data.meta.time >= 0} regOrder={regOrder} onRegOrder={setRegOrder} />
         )}
         {body}
       </main>

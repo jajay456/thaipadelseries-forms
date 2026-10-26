@@ -2,6 +2,7 @@ import { fmt } from "../lib/sheet.js";
 import Avatar from "./Avatar.jsx";
 import PayStatus from "./PayStatus.jsx";
 import Confirmed from "./Confirmed.jsx";
+import { dateDay, formatDateDay } from "../lib/dates.js";
 
 // รายชื่อทุกคนเรียงลงมา — partner แยกเป็นคนของตัวเอง พร้อมจำนวนประเภทและสถานะการจ่ายเงิน
 // people = ทุกคนหลังค้นหา/กรองประเภท (ใช้นับตัวเลขบนชิป), shown = หลังกรองสถานะและจำนวนประเภทแล้ว
@@ -14,6 +15,7 @@ export default function PeopleList({ data, shown, onOpen }) {
         <ol className="people-list">
           {shown.map((p, i) => {
             const others = p.paidBy.filter((n) => n !== p.name);
+            const registeredDay = p.registered ? dateDay(p.registered) : null;
             return (
               <li key={p.key} className="clickable" onClick={() => onOpen(p)}>
                 <span className="n">{i + 1}</span>
@@ -34,6 +36,11 @@ export default function PeopleList({ data, shown, onOpen }) {
                       </span>
                     ))}
                   </div>
+                  {registeredDay && (
+                    <span className="muted registered-date">
+                      Registered{p.registeredBy && ` by ${p.registeredBy}`} · {formatDateDay(registeredDay)}
+                    </span>
+                  )}
                 </div>
                 <div className="pl-side">
                   <span className="cat-count">{p.cats.length} {p.cats.length === 1 ? "category" : "categories"}</span>
