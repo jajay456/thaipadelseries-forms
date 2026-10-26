@@ -523,9 +523,9 @@ th { background: var(--surface); }
   .header-actions { flex: none; }
   .brand .logo { display: block; }
   /* เมนูกลายเป็นแถบลอยด้านล่าง */
-  .shell { padding-left: 0; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .shell { padding-left: 0; padding-bottom: calc(124px + env(safe-area-inset-bottom)); }
   .sidebar {
-    top: auto; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom)); width: auto; transform: translateX(-50%);
+    top: auto; left: 50%; bottom: calc(60px + env(safe-area-inset-bottom)); /* เว้นที่ให้ป้าย Netlify ด้านล่าง */ width: auto; transform: translateX(-50%);
     flex-direction: row; padding: 5px; border-radius: 999px; box-shadow: var(--shadow-lg);
     background: color-mix(in srgb, var(--surface) 88%, transparent);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
