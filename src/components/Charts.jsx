@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CATEGORIES, PRICES, fmt } from "../lib/sheet.js";
-import { dateDay } from "../lib/dates.js";
+import { dateDay, isoLocal } from "../lib/dates.js";
 
 // ---------- data ----------
 

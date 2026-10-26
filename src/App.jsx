@@ -283,7 +283,22 @@ export default function App() {
   if (CONFIG_API_URL && !auth) return <SignIn onSignIn={signIn} />;
 
   return (
-    <>
+    <div className="shell">
+      {/* \u0e40\u0e21\u0e19\u0e39\u0e14\u0e49\u0e32\u0e19\u0e0b\u0e49\u0e32\u0e22 (\u0e08\u0e2d\u0e40\u0e25\u0e47\u0e01\u0e01\u0e25\u0e32\u0e22\u0e40\u0e1b\u0e47\u0e19\u0e41\u0e16\u0e1a\u0e25\u0e48\u0e32\u0e07) */}
+      <aside className="sidebar">
+        <img className="side-logo" src="./logo.png" alt="Thaipadelseries" />
+        {sheet && (
+          <nav className="side-nav" aria-label="Views">
+            {views.map(([v, label, icon]) => (
+              <button key={v} className={view === v ? "on" : ""} onClick={() => changeView(v)}
+                aria-label={label} aria-current={view === v ? "page" : undefined}>
+                <Icon name={icon} size={20} /><span>{label}</span>
+              </button>
+            ))}
+          </nav>
+        )}
+      </aside>
+
       <header>
         <div className="header-in">
           <div className="brand">
@@ -293,49 +308,49 @@ export default function App() {
               <span className="muted">{updated || "\u00a0"}</span>
             </div>
           </div>
-          <button className="btn icon-only" onClick={toggleTheme}
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            title={theme === "dark" ? "Light mode" : "Dark mode"}>
-            <Icon name={theme === "dark" ? "sun" : "moon"} />
-          </button>
-          <button className={`btn label-sm ${loading ? "spin" : ""}`} onClick={refresh} aria-label="Refresh">
-            <Icon name="refresh" /><span className="hide-sm">Refresh</span>
-          </button>
-          {adminKey && <>
-            {sheet && (
-              <button className="btn label-sm danger" onClick={() => removeSheet(Math.min(active, sheets.length - 1))}
-                aria-label="Remove sheet" title={`Remove "${sName}" for everyone`}>
-                <Icon name="trash" /><span className="hide-sm">Remove sheet</span>
+          <div className="header-actions">
+            <div className="header-actions-in">
+              <button className="btn icon-only" onClick={toggleTheme}
+                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                title={theme === "dark" ? "Light mode" : "Dark mode"}>
+                <Icon name={theme === "dark" ? "sun" : "moon"} />
               </button>
-            )}
-            <button className="btn primary label-sm" onClick={() => setAdding(true)} disabled={!sheets} aria-label="Add sheet">
-              <Icon name="plus" /><span className="hide-sm">Add sheet</span>
-            </button>
-          </>}
-          {CONFIG_API_URL && (
-            <button className="btn icon-only" onClick={signOut} aria-label="Sign out"
-              title={`Sign out (${adminKey ? "admin" : "viewer"}) — use another password to switch`}>
-              <Icon name="logout" />
-            </button>
-          )}
+              <button className={`btn label-sm ${loading ? "spin" : ""}`} onClick={refresh} aria-label="Refresh">
+                <Icon name="refresh" /><span className="hide-sm">Refresh</span>
+              </button>
+              {adminKey && <>
+                {sheet && (
+                  <button className="btn label-sm danger" onClick={() => removeSheet(Math.min(active, sheets.length - 1))}
+                    aria-label="Remove sheet" title={`Remove "${sName}" for everyone`}>
+                    <Icon name="trash" /><span className="hide-sm">Remove sheet</span>
+                  </button>
+                )}
+                <button className="btn primary label-sm" onClick={() => setAdding(true)} disabled={!sheets} aria-label="Add sheet">
+                  <Icon name="plus" /><span className="hide-sm">Add sheet</span>
+                </button>
+              </>}
+              {CONFIG_API_URL && (
+                <button className="btn icon-only" onClick={signOut} aria-label="Sign out"
+                  title={`Sign out (${adminKey ? "admin" : "viewer"}) — use another password to switch`}>
+                  <Icon name="logout" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </header>
 
       <main className="wrap">
+        <div className="page-head">
+          <h2 className="page-title">{views.find(([v]) => v === view)?.[1] || "Dashboard"}</h2>
+        </div>
         {sheets?.length > 1 && <Tabs sheets={sheets} active={Math.min(active, sheets.length - 1)} onSelect={switchTo}
           onDelete={adminKey ? removeSheet : null} />}
         {data && <Stats data={data} rows={rows} />}
         {sheet && <div className="toolbar">
-          <div className="seg">
-            {views.map(([v, label, icon]) => (
-              <button key={v} className={view === v ? "on" : ""} onClick={() => changeView(v)}>
-                <Icon name={icon} size={16} />{label}
-              </button>
-            ))}
-          </div>
           <label className="search">
-            <Icon name="search" size={16} />
-            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, email, phone, anything…" />
+            <Icon name="search" size={14} />
+            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" />
           </label>
           <CsvMenu onThisView={exportCSV} onAllSheets={exportAll} sheetCount={sheets?.length || 0} />
           {data && <span className="muted count">
@@ -358,6 +373,6 @@ export default function App() {
         <AddSheetDialog open={adding} onClose={() => setAdding(false)} onAdd={addSheet} />
         {adminKey && <AddPlayerDialog open={addingPlayer} onClose={() => setAddingPlayer(false)} onAdd={addPlayer} />}
       </>}
-    </>
+    </div>
   );
 }
