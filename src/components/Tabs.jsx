@@ -1,88 +1,96 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon.jsx";
 
-const HOLD_MS = 350; // กดค้างนานเท่านี้ถึงเริ่มลาก (สั้นกว่านี้ = คลิกเลือกชีตตามปกติ)
-
 // แสดงชีตที่ add ล่าสุดก่อน (รายการเก็บตามลำดับ add) — onSelect/onEdit/onDelete ยังได้ index ในรายการเดิม
 // onEdit / onDelete / onReorder มีเฉพาะตอนเป็นแอดมิน · onReorder(indexes) = ลำดับใหม่ของรายการ
+// จัดลำดับ: กด Reorder → ลากที่จับ ⠿ ได้ทันที → Done บันทึก / Cancel ทิ้ง
 export default function Tabs({ sheets, active, onSelect, onEdit, onDelete, onReorder }) {
   const shown = sheets.map((_, i) => i).reverse(); // ลำดับที่แสดง (index ในรายการ)
-  const [drag, setDrag] = useState(null); // { from, order } ระหว่างลาก
-  const order = drag?.order || shown;
+  const [draft, setDraft] = useState(null); // ลำดับระหว่างอยู่ในโหมดจัดลำดับ · null = ไม่ได้จัด
+  const [dragging, setDragging] = useState(null); // index ของแท็บที่กำลังลาก
   const els = useRef({});
-  const press = useRef(null);
-  const dragged = useRef(false); // กันคลิกที่ตามมาหลังปล่อยนิ้ว ไม่ให้นับเป็นการเลือกชีต
+  const order = draft || shown;
+  // รายการชีตเปลี่ยนจำนวนระหว่างจัด (มีคน add/ลบ) → ลำดับที่ร่างไว้ใช้ไม่ได้แล้ว ออกจากโหมด
+  useEffect(() => { setDraft(null); setDragging(null); }, [sheets.length]);
 
-  const cancelPress = () => { clearTimeout(press.current?.timer); press.current = null; };
-
-  const down = (e, i) => {
-    if (!onReorder || e.button > 0 || e.target.closest(".x")) return;
-    cancelPress();
-    press.current = {
-      x: e.clientX, y: e.clientY,
-      timer: setTimeout(() => { press.current = null; setDrag({ from: i, order: shown }); navigator.vibrate?.(12); }, HOLD_MS),
-    };
-  };
-  // ขยับเกินนิดเดียวก่อนครบเวลา = ผู้ใช้กำลังเลื่อนแถบ ไม่ใช่กดค้าง
-  const moveBeforeHold = (e) => {
-    const p = press.current;
-    if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) cancelPress();
+  const startDrag = (e, i) => {
+    if (e.button > 0) return;
+    e.preventDefault();
+    setDragging(i);
   };
 
   useEffect(() => {
-    if (!drag) return;
+    if (dragging == null) return;
     const move = (e) => {
-      // วางตัวที่ลากไว้หน้าแท็บแรกที่จุดกึ่งกลางอยู่ทางขวาของนิ้ว
-      const others = drag.order.filter((j) => j !== drag.from);
-      let pos = others.findIndex((j) => { const r = els.current[j]?.getBoundingClientRect(); return r && e.clientX < r.left + r.width / 2; });
-      if (pos < 0) pos = others.length;
-      const next = [...others.slice(0, pos), drag.from, ...others.slice(pos)];
-      if (next.join() !== drag.order.join()) setDrag({ ...drag, order: next });
+      // วางตัวที่ลากไว้หน้าแท็บแรกที่จุดกึ่งกลางอยู่ถัดจากนิ้ว
+      // มือถือ = รายการแนวตั้ง เทียบแนวตั้งอย่างเดียว · จอใหญ่ = ไล่ตามบรรทัด เผื่อแท็บขึ้นหลายบรรทัด
+      const vertical = matchMedia("(max-width: 640px)").matches;
+      setDraft((cur) => {
+        const others = cur.filter((j) => j !== dragging);
+        let pos = others.findIndex((j) => {
+          const r = els.current[j]?.getBoundingClientRect();
+          if (!r) return false;
+          if (vertical) return e.clientY < r.top + r.height / 2;
+          return e.clientY < r.top || (e.clientY <= r.bottom && e.clientX < r.left + r.width / 2);
+        });
+        if (pos < 0) pos = others.length;
+        const next = [...others.slice(0, pos), dragging, ...others.slice(pos)];
+        return next.join() === cur.join() ? cur : next;
+      });
     };
-    const up = () => {
-      dragged.current = true;
-      setTimeout(() => { dragged.current = false; }, 80);
-      if (drag.order.join() !== shown.join()) onReorder([...drag.order].reverse());
-      setDrag(null);
-    };
-    const cancel = () => setDrag(null);
-    // ระหว่างลากด้วยนิ้ว ห้ามหน้า/แถบเลื่อนตาม
+    const stop = () => setDragging(null);
     const noScroll = (e) => e.preventDefault();
     window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
     window.addEventListener("touchmove", noScroll, { passive: false });
     return () => {
       window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
       window.removeEventListener("touchmove", noScroll);
     };
-  }, [drag]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dragging]);
 
-  useEffect(() => cancelPress, []);
+  const done = () => {
+    if (draft.join() !== shown.join()) onReorder([...draft].reverse());
+    setDraft(null);
+  };
 
+  // ปุ่มจัดลำดับอยู่นอกแถบที่เลื่อนได้ — บนมือถือจะไม่หลุดขอบจอ
   return (
-    <div className={`tabs ${onReorder ? "sortable" : ""} ${drag ? "reordering" : ""}`}>
-      {order.map((i) => {
-        const s = sheets[i];
-        return (
-          <div key={i} ref={(el) => { els.current[i] = el; }}
-            className={`tab ${i === active ? "active" : ""} ${drag?.from === i ? "dragging" : ""}`}
-            title={onReorder ? "Press and hold to move" : undefined}
-            onPointerDown={(e) => down(e, i)} onPointerMove={moveBeforeHold} onPointerUp={cancelPress} onPointerLeave={cancelPress}
-            onContextMenu={(e) => onReorder && e.preventDefault()}
-            onClick={() => !dragged.current && onSelect(i)}>
-            {s.name}
-            {onEdit && (
-              <span className="x" title="Edit name / link" onClick={(e) => { e.stopPropagation(); onEdit(i); }}><Icon name="edit" /></span>
-            )}
-            {onDelete && (
-              <span className="x" title="Remove for everyone" onClick={(e) => { e.stopPropagation(); onDelete(i); }}><Icon name="x" /></span>
-            )}
-          </div>
-        );
-      })}
+    <div className={`tabs-bar ${draft ? "arranging" : ""}`}>
+    <div className={`tabs ${draft ? "arranging" : ""}`}>
+      {order.map((i) => (
+        <div key={i} ref={(el) => { els.current[i] = el; }}
+          className={`tab ${!draft && i === active ? "active" : ""} ${dragging === i ? "dragging" : ""}`}
+          onClick={() => !draft && onSelect(i)}>
+          {draft && (
+            <span className="tab-handle" onPointerDown={(e) => startDrag(e, i)} aria-label={`Drag to move ${sheets[i].name}`} title="Drag to move">⠿</span>
+          )}
+          {sheets[i].name}
+          {!draft && onEdit && (
+            <span className="x" title="Edit name / link" onClick={(e) => { e.stopPropagation(); onEdit(i); }}><Icon name="edit" /></span>
+          )}
+          {!draft && onDelete && (
+            <span className="x" title="Remove for everyone" onClick={(e) => { e.stopPropagation(); onDelete(i); }}><Icon name="x" /></span>
+          )}
+        </div>
+      ))}
+    </div>
+      {onReorder && sheets.length > 1 && (
+        <div className="tabs-actions">
+          {draft ? <>
+            <span className="muted tabs-hint">Drag ⠿ to move</span>
+            <button className="btn sm" onClick={() => setDraft(null)}>Cancel</button>
+            <button className="btn sm primary" onClick={done}>Done</button>
+          </> : (
+            <button className="btn sm tab-reorder" onClick={() => setDraft(shown)} title="Change the order of the sheets" aria-label="Reorder sheets">
+              ⠿<span className="hide-sm"> Reorder</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

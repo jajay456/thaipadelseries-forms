@@ -166,10 +166,42 @@ header {
 .tab .x { display: grid; place-items: center; opacity: .6; }
 .tab .x svg { width: 14px; height: 14px; }
 .tab .x:hover { opacity: 1; }
-/* ลากย้ายแท็บ (แอดมิน): กดค้างแล้วลาก */
-.tabs.sortable .tab { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-.tabs.reordering, .tabs.reordering .tab { cursor: grabbing; }
-.tabs .tab.dragging { position: relative; z-index: 2; transform: scale(1.07); box-shadow: var(--shadow-lg); opacity: .95; }
+/* จัดลำดับแท็บ (แอดมิน): โหมด Reorder → ลากที่จับ ⠿ · ขึ้นหลายบรรทัดได้ จะได้ไม่ต้องเลื่อนแถบระหว่างลาก */
+.tabs-bar { display: flex; align-items: flex-start; gap: 8px; }
+.tabs-bar > .tabs { flex: 1; min-width: 0; }
+/* มีปุ่มจัดลำดับ: แถบแท็บไม่ยื่นขอบขวาไปใต้ปุ่ม · ค่อย ๆ จางที่ขอบขวาให้รู้ว่าเลื่อนดูต่อได้ */
+.tabs-bar:has(.tabs-actions):not(.arranging) > .tabs {
+  margin-right: 0; padding-right: 16px;
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+}
+.tabs-actions { flex: none; display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+.tabs-hint { white-space: nowrap; }
+.tab-reorder { color: var(--muted); }
+.tabs.arranging { flex-wrap: wrap; }
+.tabs.arranging .tab { cursor: default; user-select: none; -webkit-user-select: none; padding-left: 8px; }
+.tab-handle {
+  display: grid; place-items: center; width: 24px; height: 24px; margin: -4px 0; border-radius: 8px;
+  cursor: grab; touch-action: none; color: var(--muted); font-size: 16px; line-height: 1;
+}
+.tab-handle:hover { background: var(--surface-2); color: var(--text); }
+.tabs .tab.dragging { position: relative; z-index: 2; transform: scale(1.06); box-shadow: var(--shadow-lg); }
+.tabs .tab.dragging .tab-handle { cursor: grabbing; }
+@media (max-width: 640px) {
+  /* ปุ่มบนแท็บโตพอให้นิ้วกดโดน (ตัวไอคอนเท่าเดิม ขยายแค่พื้นที่กด) */
+  .tab .x { width: 28px; height: 28px; margin: -6px -6px -6px -2px; }
+  .tab .x + .x { margin-left: -6px; }
+  .tab-reorder { width: 36px; height: 36px; padding: 0; justify-content: center; font-size: 16px; }
+  .tabs-actions { margin-top: 2px; }
+  /* โหมดจัดลำดับ: รายการแนวตั้งเต็มความกว้าง ลากขึ้น-ลง · ปุ่มอยู่ใต้รายการ */
+  .tabs-bar.arranging { flex-direction: column; align-items: stretch; gap: 0; margin-bottom: 8px; }
+  .tabs.arranging { flex-direction: column; flex-wrap: nowrap; overflow: visible; gap: 8px; padding-bottom: 12px; }
+  .tabs.arranging .tab { padding: 10px 16px 10px 6px; font-size: 15px; }
+  .tab-handle { width: 36px; height: 36px; margin: -8px 0; font-size: 20px; }
+  .tabs-bar.arranging .tabs-actions { justify-content: flex-end; }
+  .tabs-bar.arranging .tabs-actions .btn { height: 40px; padding: 0 18px; }
+  .tabs-bar.arranging .tabs-hint { margin-right: auto; }
+}
 
 /* ---------- stats ---------- */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 18px; }
