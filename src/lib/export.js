@@ -1,6 +1,6 @@
 import { STATUS, buildPeople } from "./people.js";
 import { REMARK_STATUS, applyMgmt } from "./manage.js";
-import { loadSheet } from "./sheet.js";
+import { loadSheet, peekSheet } from "./sheet.js";
 
 // แถว CSV ของผู้เล่น — ใช้ทั้ง CSV หน้า Manage และ CSV รวมทุกชีต · remark ใส่เฉพาะแอดมิน
 export const playerHeaders = (admin) => [
@@ -16,14 +16,20 @@ export const playerRow = (p, admin) => [
 ];
 
 // โหลดทุกชีตพร้อมกัน (พร้อมค่าที่แก้ในหน้า Manage ของแต่ละชีต) → [{ s, data, people } | { s, error }]
-export const loadAllPeople = (sheets, key) => Promise.all(sheets.map(async (s) => {
+export const loadAllPeople = (sheets, key, scope) => Promise.all(sheets.map(async (s) => {
   try {
-    const { data, records } = await loadSheet(s, key);
+    const { data, records } = await loadSheet(s, key, scope);
     return { s, data, people: applyMgmt(buildPeople(data), records, data.meta).people };
   } catch (e) {
     return { s, error: e.message };
   }
 }));
+
+// สำเนาในเครื่องของทุกชีต (ไม่มีครบ = null)
+export function peekAllPeople(sheets, scope) {
+  const out = sheets.map((s) => { const c = peekSheet(s, scope); return c && { s, data: c.data, people: applyMgmt(buildPeople(c.data), c.records, c.data.meta).people }; });
+  return out.every(Boolean) ? out : null;
+}
 
 // รวมรายชื่อผู้เล่นทุกชีตเป็นตารางเดียว — ชีตที่โหลดไม่ได้จะถูกข้าม และคืนชื่อกลับไปใน failed
 export async function exportAllSheets(sheets, key, admin) {

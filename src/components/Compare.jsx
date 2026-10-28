@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { loadAllPeople } from "../lib/export.js";
+import { loadAllPeople, peekAllPeople } from "../lib/export.js";
 import { playerKey } from "../lib/manage.js";
 import { CATEGORIES, fmt, sheetKey, store } from "../lib/sheet.js";
 import { Card, Swatch, dayLabel, niceMax, summarize, useTip } from "./Charts.jsx";
@@ -70,27 +70,28 @@ function CumulativeLines({ series, bind }) {
   );
 }
 
-export default function Compare({ sheets, authKey }) {
+export default function Compare({ sheets, authKey, scope }) {
   const [results, setResults] = useState(null);
   const [bind, tipEl] = useTip();
-  // ชีตที่เลือกเทียบ (เก็บเป็น sheetKey ในเครื่องนี้) · null = ค่าเริ่มต้น 8 ชีตแรก
+  // ชีตที่เลือกเทียบ (เก็บเป็น sheetKey ในเครื่องนี้) · null = ค่าเริ่มต้น 8 ชีตที่ add ล่าสุด
   const [picked, setPicked] = useState(() => store.get(PICK_KEY));
   const keys = sheets.map(sheetKey);
-  const on = (i) => (picked ? picked.includes(keys[i]) : i < MAX_SHEETS);
+  const on = (i) => (picked ? picked.includes(keys[i]) : i >= keys.length - MAX_SHEETS);
   const toggle = (i) => {
     const cur = keys.filter((_, j) => on(j));
     const next = on(i) ? cur.filter((k) => k !== keys[i]) : cur.length < MAX_SHEETS ? [...cur, keys[i]] : cur;
     setPicked(next); store.set(PICK_KEY, next);
   };
-  const pickAll = () => { const next = keys.slice(0, MAX_SHEETS); setPicked(next); store.set(PICK_KEY, next); };
+  const pickAll = () => { const next = keys.slice(-MAX_SHEETS); setPicked(next); store.set(PICK_KEY, next); };
 
   // โหลดทุกชีตครั้งเดียว — การเลือก/ไม่เลือกแค่กรองผลที่มีอยู่ ไม่ต้องโหลดใหม่
+  // แสดงสำเนาในเครื่องก่อน (ถ้ามีครบทุกชีต) แล้วค่อยแทนด้วยข้อมูลล่าสุด
   useEffect(() => {
     let live = true;
-    setResults(null);
-    loadAllPeople(sheets, authKey).then((r) => live && setResults(r));
+    setResults(peekAllPeople(sheets, scope));
+    loadAllPeople(sheets, authKey, scope).then((r) => live && setResults(r));
     return () => { live = false; };
-  }, [sheets, authKey]);
+  }, [sheets, authKey, scope]);
 
   if (sheets.length < 2) return <div className="state">Add at least two sheets to compare them.</div>;
   if (!results) return <div className="state"><div className="loader" />Loading all sheets…</div>;
@@ -100,7 +101,7 @@ export default function Compare({ sheets, authKey }) {
   const picker = (
     <div className="chips cmp-picker">
       <span className="muted">Compare {nPicked} of {sheets.length}:</span>
-      {sheets.map((sh, i) => (
+      {sheets.map((sh, i) => [sh, i]).reverse().map(([sh, i]) => (
         <button key={keys[i]} className={`chip ${on(i) ? "on" : ""}`} onClick={() => toggle(i)} aria-pressed={on(i)}
           disabled={!on(i) && nPicked >= MAX_SHEETS} title={!on(i) && nPicked >= MAX_SHEETS ? `Up to ${MAX_SHEETS} sheets at a time` : ""}>
           <i className={`viz-swatch k${(i % MAX_SHEETS) + 1}`} />{sh.name}{results[i].error && " ⚠"}
@@ -110,7 +111,7 @@ export default function Compare({ sheets, authKey }) {
     </div>
   );
   const series = results.map((r, i) => ({ ...r, k: `k${(i % MAX_SHEETS) + 1}`, name: r.s.name })).filter((r, i) => on(i) && !r.error)
-    .map((r) => ({ ...r, sum: summarize(r.people, r.data.meta) }));
+    .map((r) => ({ ...r, sum: summarize(r.people, r.data.meta) })).reverse(); // ล่าสุดก่อน เหมือนแท็บ
   if (series.length < 2) return (
     <div className="viz">
       {picker}

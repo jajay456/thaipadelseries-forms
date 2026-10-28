@@ -97,25 +97,48 @@ async function fetchSheetCSV(sheet) {
   return toData(parseCSV(text));
 }
 
+// ===== สำเนาล่าสุดในเครื่อง — เปิดเว็บ/สลับชีตแล้วเห็นข้อมูลทันที ระหว่างรอ Apps Script =====
+// แยกตาม role: แอดมินเห็นช่องส่วนตัว (remark/email/phone) คนดูต้องไม่ได้สำเนาของแอดมิน · ออกจากระบบ = ล้างทิ้ง
+const CACHE_PREFIX = "sheetDashboard.cache.";
+const cacheKey = (sheet, scope) => `${CACHE_PREFIX}${scope}.${sheetKey(sheet)}`;
+export const SHEETS_CACHE_KEY = "sheetDashboard.sheetsCache";
+
+// → { data, records, at } หรือ null
+export function peekSheet(sheet, scope) {
+  if (!scope || !sheet?.url) return null;
+  const c = store.get(cacheKey(sheet, scope));
+  return c?.values ? { data: toData(c.values), records: c.records || {}, at: c.at } : null;
+}
+
+export function clearSheetCache() {
+  try {
+    Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX) || k === SHEETS_CACHE_KEY).forEach((k) => localStorage.removeItem(k));
+  } catch {}
+}
+
 // ข้อมูลฟอร์ม + ค่าที่แก้ในหน้า Manage ของชีตนี้ → { data, records }
 // มี CONFIG_API_URL: ขอผ่าน Apps Script พร้อมรหัส (ชีตเป็นส่วนตัวได้) · ไม่มี: อ่าน CSV ตรง
-export async function loadSheet(sheet, key) {
+// scope ("admin" | "viewer") = เก็บสำเนาไว้ใช้ครั้งหน้า
+export async function loadSheet(sheet, key, scope) {
   if (!CONFIG_API_URL) return { data: await fetchSheetCSV(sheet), records: {} };
   const out = await post({ action: "data", key, sheet: { url: sheet.url, tab: sheet.tab || "" }, sheetKey: sheetKey(sheet) });
+  if (scope) store.set(cacheKey(sheet, scope), { values: out.values || [], records: out.records || {}, at: Date.now() });
   return { data: toData(out.values || []), records: out.records || {} };
 }
 
 // ใช้ในเทสต์/สคริปต์เดิม
 export const fetchSheet = async (sheet, key) => (await loadSheet(sheet, key)).data;
 
-// Apps Script ช้าได้ (เปิดชีตใหญ่ครั้งแรก) แต่ถ้าเกินนี้ถือว่าค้าง → แจ้ง error แทนการหมุนไปเรื่อย ๆ
-const API_TIMEOUT_MS = 45_000;
+// Apps Script ช้าได้ (เปิดชีตใหญ่ครั้งแรก) แต่ถ้าเกินนี้ถือว่าค้าง → ลองใหม่ 1 ครั้ง แล้วค่อยแจ้ง error
+const API_TIMEOUT_MS = 30_000;
 
-async function callApi(init) {
+async function callApi(init, retry = 1) {
   let res;
   try {
     res = await fetch(CONFIG_API_URL, { ...init, signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   } catch (e) {
+    // เน็ตสะดุด/หมดเวลา (ไม่ใช่ error จากสคริปต์) → รอแป๊บแล้วลองอีกครั้ง
+    if (retry > 0) { await new Promise((r) => setTimeout(r, 1500)); return callApi(init, retry - 1); }
     if (e.name === "TimeoutError") throw new Error("The server took too long to respond — try again");
     throw e;
   }

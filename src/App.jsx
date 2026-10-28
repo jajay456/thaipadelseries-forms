@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AUTO_REFRESH_MS, CATEGORIES, CONFIG_API_URL, PRICES, checkKey, downloadCSV, fetchSheetList, filterRows, isAuthError, loadSheet, saveMgmt, saveSheetList, store } from "./lib/sheet.js";
+import { AUTO_REFRESH_MS, CATEGORIES, CONFIG_API_URL, PRICES, SHEETS_CACHE_KEY, checkKey, clearSheetCache, downloadCSV, fetchSheetList, filterRows, isAuthError, loadSheet, peekSheet, saveMgmt, saveSheetList, store } from "./lib/sheet.js";
 import { applyMgmt, newManualKey, peopleCategoryCounts, priceChecks, teamsFromPeople } from "./lib/manage.js";
 import Tabs from "./components/Tabs.jsx";
 import Stats from "./components/Stats.jsx";
@@ -27,7 +27,8 @@ const MANAGE_VIEW = ["manage", "Manage", "edit"]; // เฉพาะแอดม
 
 export default function App() {
   // รายการชีตมาจาก Apps Script (ดู CONFIG_API_URL ใน lib/sheet.js) — ทุกคนเห็นเหมือนกัน แก้ได้เฉพาะแอดมิน
-  const [sheets, setSheets] = useState(null);
+  // เริ่มจากรายการที่จำไว้ → โหลดข้อมูลชีตได้ทันที ไม่ต้องรอรายการจาก Apps Script ก่อน
+  const [sheets, setSheets] = useState(() => store.get(SHEETS_CACHE_KEY));
   const [listError, setListError] = useState(null);
   // รหัสที่ใช้เข้าสู่ระบบ { key, role } — เก็บในเครื่องนี้ · Apps Script ตรวจรหัสทุกคำขอ
   //   role "viewer" = ดูอย่างเดียว · "admin" = ดู + แก้
@@ -45,7 +46,8 @@ export default function App() {
   const [addingPlayer, setAddingPlayer] = useState(false);
   // ค่าที่แอดมินแก้ในหน้า Manage ของชีตที่เลือก { playerKey: data } — วางทับข้อมูลจากฟอร์มทุกครั้งที่โหลด
   const [records, setRecords] = useState({});
-  const [active, setActive] = useState(0);
+  // index ในรายการ (ลำดับตามวันที่ add — อันใหม่อยู่ท้าย) · null = ชีตที่ add ล่าสุด
+  const [activePick, setActive] = useState(null);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [updated, setUpdated] = useState("");
@@ -70,11 +72,14 @@ export default function App() {
   const open = (x) => setOpenTarget(Array.isArray(x) ? { row: x } : { person: x });
   const [theme, toggleTheme] = useTheme();
 
-  const sheet = sheets?.[Math.min(active, sheets.length - 1)];
+  const active = sheets?.length ? (activePick == null ? sheets.length - 1 : Math.min(activePick, sheets.length - 1)) : 0;
+  const sheet = sheets?.[active];
   const { name: sName, url: sUrl, tab: sTab } = sheet || {};
 
+  const role = auth?.role || "";
   const signOut = useCallback(() => {
     setAuth(null); store.set(AUTH_KEY, null); store.set(OLD_ADMIN_KEY, null);
+    clearSheetCache();
     setSheets(null); setData(null); setRecords({});
   }, []);
 
@@ -82,6 +87,7 @@ export default function App() {
     if (CONFIG_API_URL && !authKey) return;
     try {
       const list = await fetchSheetList(authKey);
+      store.set(SHEETS_CACHE_KEY, list);
       setSheets((old) => (JSON.stringify(old) === JSON.stringify(list) ? old : list));
       setListError(null);
     } catch (e) {
@@ -92,27 +98,32 @@ export default function App() {
 
   // นับคำขอ — คำตอบที่มาช้าของชีตเดิม/คำขอเก่า จะไม่ทับข้อมูลของชีตที่เปิดอยู่
   const loadSeq = useRef(0);
+  const shown = useRef(false); // มีข้อมูลแสดงอยู่แล้วไหม (รีเฟรชพลาด = เก็บของเดิมไว้)
+  shown.current = !!data;
+  const lastLoad = useRef(0);
   const load = useCallback(async () => {
     if (!sUrl || (CONFIG_API_URL && !authKey)) return;
     const seq = ++loadSeq.current;
     setLoading(true);
     try {
       // ข้อมูลฟอร์ม + ค่าที่แก้ไว้ มาในคำขอเดียว
-      const { data: d, records: m } = await loadSheet({ url: sUrl, tab: sTab }, authKey);
+      const { data: d, records: m } = await loadSheet({ url: sUrl, tab: sTab }, authKey, role);
       if (seq !== loadSeq.current) return;
       setData(d);
       setRecords(m);
       setError(null);
+      lastLoad.current = Date.now();
       setUpdated("Updated " + new Date().toLocaleTimeString("en-GB"));
     } catch (e) {
       if (seq !== loadSeq.current) return;
       if (isAuthError(e)) return signOut();
-      setData(null);
-      setError(e.message);
+      // มีข้อมูลอยู่แล้ว → ไม่ล้างหน้าจอ แค่บอกว่าอัปเดตไม่สำเร็จ (รอบหน้าจะลองใหม่เอง)
+      if (shown.current) setUpdated("⚠️ Couldn't refresh — showing earlier data");
+      else { setData(null); setError(e.message); }
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
-  }, [sUrl, sTab, authKey, signOut]);
+  }, [sUrl, sTab, authKey, role, signOut]);
 
   // ข้อมูลชีตที่เลือก: โหลดตอนเปิด/เปลี่ยนชีต และทุก AUTO_REFRESH_MS
   useEffect(() => {
@@ -128,8 +139,23 @@ export default function App() {
     return () => clearInterval(t);
   }, [loadList]);
 
-  // ชีตเปลี่ยน (เช่น แก้ลิงก์ในชีตควบคุม) → ล้างข้อมูลเก่า
-  useEffect(() => { setData(null); setError(null); setRecords({}); }, [sUrl, sTab]);
+  // ชีตเปลี่ยน → แสดงสำเนาล่าสุดในเครื่องทันที (ถ้ามี) ระหว่างรอข้อมูลจริง
+  useEffect(() => {
+    const c = peekSheet({ url: sUrl, tab: sTab }, role);
+    setData(c?.data || null); setRecords(c?.records || {}); setError(null);
+    setUpdated(c ? "Saved copy from " + new Date(c.at).toLocaleTimeString("en-GB") + " · updating…" : "");
+  }, [sUrl, sTab, role]);
+
+  // กลับมาที่แท็บ/แอป หลังหายไปนาน → โหลดใหม่ทันที ไม่ต้องรอรอบถัดไปหรือกด reload
+  useEffect(() => {
+    const onShow = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastLoad.current < 15_000) return;
+      load(); loadList();
+    };
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("online", onShow);
+    return () => { document.removeEventListener("visibilitychange", onShow); window.removeEventListener("online", onShow); };
+  }, [load, loadList]);
 
   const refresh = () => { loadList(); load(); };
 
@@ -168,10 +194,18 @@ export default function App() {
     if (await saveList(sheets.map((x, j) => (j === editingSheet ? s : x)))) setEditingSheet(null);
   };
 
+  // ลากย้ายแท็บ: แสดงลำดับใหม่ทันที แล้วบันทึกให้ทุกคน (ไม่สำเร็จ = โหลดรายการเดิมกลับมา)
+  const reorderSheets = async (idx) => {
+    const next = idx.map((i) => sheets[i]);
+    setSheets(next);
+    setActive(idx.indexOf(active));
+    if (!(await saveList(next))) loadList();
+  };
+
   const removeSheet = async (i) => {
     const s = sheets[i];
     if (!s || !confirm(`Remove "${s.name}" for everyone?\n(The Google Sheet itself is not deleted.)`)) return;
-    if (await saveList(sheets.filter((_, j) => j !== i))) switchTo(Math.max(0, Math.min(active, sheets.length - 2)));
+    if (await saveList(sheets.filter((_, j) => j !== i))) switchTo(null);
   };
 
   // บันทึกค่าที่แก้ของผู้เล่น 1 คน (data = null → ลบ) — แสดงผลทันที แล้วค่อยยืนยันกับเซิร์ฟเวอร์
@@ -273,7 +307,7 @@ export default function App() {
   if (!sheets && listError) body = <div className="state">⚠️ Can't load the sheet list — {listError}</div>;
   else if (!sheets) body = <div className="state"><div className="loader" />Loading…</div>;
   // Compare โหลดทุกชีตเอง ไม่ขึ้นกับชีตที่เลือกอยู่
-  else if (view === "compare") body = <Compare sheets={sheets} authKey={authKey} />;
+  else if (view === "compare") body = <Compare sheets={sheets} authKey={authKey} scope={role} />;
   else if (!sheet) body = <div className="state">{adminKey ? 'No sheets yet — click "Add sheet".' : "No sheets configured yet."}</div>;
   else if (error) body = (
     <div className="state">
@@ -339,7 +373,7 @@ export default function App() {
               </button>
               {adminKey && <>
                 {sheet && (
-                  <button className="btn label-sm danger" onClick={() => removeSheet(Math.min(active, sheets.length - 1))}
+                  <button className="btn label-sm danger" onClick={() => removeSheet(active)}
                     aria-label="Remove sheet" title={`Remove "${sName}" for everyone`}>
                     <Icon name="trash" /><span className="hide-sm">Remove sheet</span>
                   </button>
@@ -364,8 +398,8 @@ export default function App() {
           <h2 key={view} className="page-title">{views.find(([v]) => v === view)?.[1] || "Dashboard"}</h2>
         </div>
         {/* แอดมินเห็นแท็บเสมอ (แม้มีชีตเดียว) เพื่อแก้ชื่อได้ */}
-        {!comparing && (sheets?.length > 1 || (adminKey && sheets?.length > 0)) && <Tabs sheets={sheets} active={Math.min(active, sheets.length - 1)} onSelect={switchTo}
-          onEdit={adminKey ? setEditingSheet : null} onDelete={adminKey ? removeSheet : null} />}
+        {!comparing && (sheets?.length > 1 || (adminKey && sheets?.length > 0)) && <Tabs sheets={sheets} active={active} onSelect={switchTo}
+          onEdit={adminKey ? setEditingSheet : null} onDelete={adminKey ? removeSheet : null} onReorder={adminKey ? reorderSheets : null} />}
         {!comparing && data && <Stats data={data} rows={rows} />}
         {!comparing && sheet && <div className="toolbar">
           <label className="search">
