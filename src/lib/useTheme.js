@@ -3,7 +3,7 @@ import { store } from "./sheet.js";
 import useMediaQuery from "./useMediaQuery.js";
 
 export const THEME_KEY = "sheetDashboard.theme";
-const BG = { light: "#f4f5f8", dark: "#0c0f14" };
+const BG = { light: "#e9ecf1", dark: "#0d0e12" };
 
 // ธีมที่ผู้ใช้เลือก ("light" | "dark") หรือ null = ตามเครื่อง
 // index.html ตั้ง data-theme ไว้ก่อนแล้ว (กันจอกะพริบตอนโหลด) — ตรงนี้ดูแลตอนกดสลับ
