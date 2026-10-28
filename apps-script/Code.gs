@@ -96,7 +96,12 @@ function readSheet_(s) {
   if (!allowed) throw new Error("Sheet is not in the list");
   const ss = SpreadsheetApp.openByUrl(s.url);
   let sh = s.tab ? ss.getSheetByName(s.tab) : null;
-  if (s.tab && !sh) throw new Error('Tab "' + s.tab + '" not found');
+  if (s.tab && !sh) {
+    // ไม่สนช่องว่างหัวท้าย/ซ้ำ และตัวพิมพ์เล็ก-ใหญ่ — ถ้ายังไม่เจอ บอกชื่อแท็บที่มีให้เลือก
+    const norm = (v) => String(v).trim().replace(/\s+/g, " ").toLowerCase();
+    sh = ss.getSheets().find((x) => norm(x.getName()) === norm(s.tab)) || null;
+    if (!sh) throw new Error('Tab "' + s.tab + '" not found. Tabs in this file: ' + ss.getSheets().map((x) => '"' + x.getName() + '"').join(", "));
+  }
   if (!sh) {
     const gid = (String(s.url).match(/[#&?]gid=(\d+)/) || [])[1];
     if (gid) sh = ss.getSheets().find((x) => String(x.getSheetId()) === gid) || null;

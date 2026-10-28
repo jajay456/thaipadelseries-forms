@@ -12,6 +12,7 @@ const PATHS = {
   unlock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 7.8-1.2",
   edit: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",
   chart: "M4 20V10M10 20V4M16 20v-7M2 20h20",
+  compare: "M7 4 3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7",
   logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
   table: "M3 5h18v14H3zM3 10h18M3 15h18M9 10v9",
   user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",

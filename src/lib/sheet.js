@@ -108,8 +108,17 @@ export async function loadSheet(sheet, key) {
 // ใช้ในเทสต์/สคริปต์เดิม
 export const fetchSheet = async (sheet, key) => (await loadSheet(sheet, key)).data;
 
+// Apps Script ช้าได้ (เปิดชีตใหญ่ครั้งแรก) แต่ถ้าเกินนี้ถือว่าค้าง → แจ้ง error แทนการหมุนไปเรื่อย ๆ
+const API_TIMEOUT_MS = 45_000;
+
 async function callApi(init) {
-  const res = await fetch(CONFIG_API_URL, init);
+  let res;
+  try {
+    res = await fetch(CONFIG_API_URL, { ...init, signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+  } catch (e) {
+    if (e.name === "TimeoutError") throw new Error("The server took too long to respond — try again");
+    throw e;
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const out = await res.json().catch(() => { throw new Error("Unexpected response from the config API"); });
   if (!out.ok) throw new Error(out.error || "Config API error");

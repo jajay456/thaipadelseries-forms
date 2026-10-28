@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { REMARK_STATUS, doublePayments } from "../lib/manage.js";
 import { fmt } from "../lib/sheet.js";
 import Avatar from "./Avatar.jsx";
 import Icon from "./Icon.jsx";
 import PayStatus from "./PayStatus.jsx";
 import Confirmed from "./Confirmed.jsx";
+import Dialog from "./Dialog.jsx";
+import CatsEditor from "./CatsEditor.jsx";
 
 const clean = (rec) => { const d = { ...rec }; delete d.updated; return d; };
+// ข้อมูลที่บันทึกไว้ของผู้เล่น — ใช้เป็นฐานเวลาบันทึกการแก้ไข
+const baseRec = (p) => clean({ ...(p.rec || {}), ...(p.manual ? { manual: true, name: p.name } : {}) });
 
 // "Juan Olsina · 2 categories (3,300) + Luc Fenelon · 2 categories (3,300)"
 const describeExpected = (c) => c.lines
@@ -17,25 +21,70 @@ const describeDouble = (p, all) => doublePayments(p, all)
   .map((d) => (d.self ? "own payment" : `${d.payer}'s payment`) + (d.amount ? ` ${fmt(d.amount)} THB` : ""))
   .join(" + ");
 
-// ช่องข้อความที่บันทึกตอนออกจากช่อง — ระหว่างพิมพ์ไม่ถูกทับด้วยข้อมูลที่รีเฟรชเข้ามา
-function Field({ value = "", onCommit, as: El = "input", ...props }) {
-  const [draft, setDraft] = useState(value);
-  const focused = useRef(false);
-  useEffect(() => { if (!focused.current) setDraft(value); }, [value]);
+const TEXT_FIELDS = ["email", "phone", "price", "remarkStatus", "remark"];
+const draftOf = (p) => ({
+  name: p.name || "",
+  cats: p.cats.map(({ cat, partner, paid }) => ({ cat: cat || "", partner: partner || "", paid: !!paid })),
+  ...Object.fromEntries(TEXT_FIELDS.map((k) => [k, p[k] || ""])),
+});
+const cleanCats = (cats) => cats.map(({ cat, partner, paid }) => ({ cat: cat.trim(), partner: partner.trim(), paid: !!paid }));
+
+// popup แก้ข้อมูลผู้เล่น — แก้ใน draft ก่อน กด Save ถึงจะบันทึกเฉพาะช่องที่เปลี่ยน
+function EditPlayerDialog({ p, catOptions, onClose, onSave }) {
+  const [f, setF] = useState(() => draftOf(p));
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const rs = REMARK_STATUS[f.remarkStatus] || REMARK_STATUS[""];
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const init = draftOf(p), patch = {};
+    TEXT_FIELDS.forEach((k) => { if (f[k].trim() !== init[k]) patch[k] = f[k].trim(); });
+    if (p.manual && f.name.trim() !== init.name) patch.name = f.name.trim();
+    const cats = cleanCats(f.cats);
+    if (JSON.stringify(cats) !== JSON.stringify(cleanCats(init.cats))) patch.cats = cats;
+    if (!Object.keys(patch).length) return onClose();
+    setBusy(true);
+    const ok = await onSave(patch);
+    setBusy(false);
+    if (ok) onClose();
+  };
+
   return (
-    <El className="m-input" {...props} value={draft} onChange={(e) => setDraft(e.target.value)}
-      onFocus={() => { focused.current = true; }}
-      onBlur={() => { focused.current = false; if (draft.trim() !== value) onCommit(draft.trim()); }} />
+    <Dialog open onClose={onClose} title={`Edit ${p.name}`} as="form" onSubmit={submit}
+      actions={<>
+        <button type="button" className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn primary" disabled={busy || (p.manual && !f.name.trim())}>{busy ? "Saving…" : "Save"}</button>
+      </>}>
+      {p.manual && <><label>Name</label><input value={f.name} onChange={set("name")} required /></>}
+
+      <label>Categories · tick when paid</label>
+      <CatsEditor cats={f.cats} options={catOptions} onChange={(cats) => setF({ ...f, cats })} />
+
+      <div className="dlg-grid">
+        <div><label>Email</label><input type="email" value={f.email} onChange={set("email")} /></div>
+        <div><label>Phone</label><input type="tel" value={f.phone} onChange={set("phone")} /></div>
+        <div><label>Price</label><input value={f.price} onChange={set("price")} placeholder="e.g. 3300" /></div>
+        <div>
+          <label>Remark</label>
+          <select className={`dlg-select status-select ${rs.cls}`} value={f.remarkStatus} onChange={set("remarkStatus")}>
+            {Object.entries(REMARK_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+      </div>
+      <label>Note</label>
+      <textarea rows={3} value={f.remark} onChange={set("remark")} placeholder="Note…" />
+    </Dialog>
   );
 }
 
-// แถวของผู้เล่น 1 คน — ติ๊ก/เลือก บันทึกทันที, ช่องข้อความบันทึกตอนออกจากช่อง
-function ManageRow({ n, p, all, checks, meta, catOptions, onSave, onOpen }) {
-  const base = () => clean({ ...(p.rec || {}), ...(p.manual ? { manual: true, name: p.name } : {}) });
-  const save = (patch) => onSave(p.key, { ...base(), ...patch });
-  const saveCats = (cats) => save({ cats: cats.map(({ cat, partner, paid }) => ({ cat: cat.trim(), partner: partner.trim(), paid: !!paid })) });
-  const setCat = (i, patch) => saveCats(p.cats.map((c, j) => (j === i ? { ...c, ...patch } : c)));
-  const text = (field) => ({ value: p[field] || "", onCommit: (v) => save({ [field]: v }) });
+const dash = (v) => (v ? <span className="m-text">{v}</span> : <span className="muted m-dash">—</span>);
+// ช่องที่ไม่มีข้อมูลเลย — บนมือถือซ่อนทิ้งเพื่อให้แถวสั้นลง
+const emptyCls = (empty) => (empty ? " m-empty" : "");
+
+// แถวของผู้เล่น 1 คน — แสดงอย่างเดียว ต้องกด Edit เพื่อแก้ข้อมูลในหน้าต่าง popup
+function ManageRow({ n, p, all, checks, meta, onSave, onOpen, onEdit }) {
+  const save = (patch) => onSave(p.key, { ...baseRec(p), ...patch });
   const rs = REMARK_STATUS[p.remarkStatus] || REMARK_STATUS[""];
 
   return (
@@ -46,23 +95,20 @@ function ManageRow({ n, p, all, checks, meta, catOptions, onSave, onOpen }) {
           <Avatar name={p.name} photo={p.row && meta.photo >= 0 ? p.row[meta.photo] : null} size={36} />
         </button>
         <div className="m-name">
-          {p.manual
-            ? <div className="m-name-line"><Field className="m-input strong" {...text("name")} aria-label="Player name" /><Confirmed person={p} /></div>
-            : <div className="m-name-line">
-                <span className="pname link-ish" onClick={() => onOpen(p)} title="View details & slip">{p.name}</span>
-                <Confirmed person={p} />
-              </div>}
+          <div className="m-name-line">
+            <span className="pname link-ish" onClick={() => onOpen(p)} title="View details & slip">{p.name}</span>
+            <Confirmed person={p} />
+          </div>
           <div className="m-tags">
             <PayStatus person={p} />
             {p.manual && <span className="pill">Added by admin</span>}
             {!p.manual && !p.row && <span className="tag">Not registered</span>}
             {p.rec && !p.manual && <span className="muted">edited</span>}
-            {p.manual && <button className="link-btn" onClick={() => onOpen(p)}>View</button>}
           </div>
           {checks.map((c, i) => c.acknowledged ? (
             <div key={i} className="m-double resolved" title={`Price list: ${fmt(c.expected)} THB — ${describeExpected(c)}`}>
               ✓ {fmt(c.amount)} THB accepted
-              <button className="link-btn" onClick={() => { const d = base(); delete d.amountOk; onSave(p.key, d); }}>Undo</button>
+              <button className="link-btn" onClick={() => { const d = baseRec(p); delete d.amountOk; onSave(p.key, d); }}>Undo</button>
             </div>
           ) : c.mismatch && (
             <div key={i} className={`m-double ${c.amount < c.expected ? "" : "warn"}`}
@@ -86,43 +132,36 @@ function ManageRow({ n, p, all, checks, meta, catOptions, onSave, onOpen }) {
       </div>
 
       <div className="m-cats">
-        <div className="m-label">Paid · Categories <span className="muted">({p.cats.length})</span></div>
-        {p.cats.map((c, i) => (
-          <div key={i} className="m-cat">
-            <input type="checkbox" checked={c.paid} onChange={(e) => setCat(i, { paid: e.target.checked })} aria-label={`Paid ${c.cat}`} />
-            <select className={`m-input ${c.cat ? "" : "placeholder"}`} value={c.cat} onChange={(e) => setCat(i, { cat: e.target.value })} aria-label="Category">
-              {!c.cat && <option value="">Select category…</option>}
-              {[...catOptions, ...(c.cat && !catOptions.includes(c.cat) ? [c.cat] : [])].map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
-            <Field value={c.partner} onCommit={(v) => setCat(i, { partner: v })} placeholder="Partner" aria-label="Partner" />
-            <button className="btn icon-only sm" onClick={() => saveCats(p.cats.filter((_, j) => j !== i))} aria-label="Remove category"><Icon name="x" size={14} /></button>
+        <div className="m-label">Categories <span className="muted">({p.cats.length})</span></div>
+        {p.cats.length ? p.cats.map((c, i) => (
+          <div key={i} className="m-cat-view">
+            <span className={`status ${c.paid ? "ok" : "bad"}`}>{c.paid ? "Paid" : "Unpaid"}</span>
+            <span className="m-cat-name">{c.cat || <span className="muted">No category</span>}</span>
+            {c.partner && <span className="muted">with {c.partner}</span>}
           </div>
-        ))}
-        <button className="btn sm" onClick={() => saveCats([...p.cats, { cat: "", partner: "", paid: false }])}>
-          <Icon name="plus" size={14} />Category
-        </button>
+        )) : <span className="muted">—</span>}
       </div>
 
-      <div className="m-contact">
+      <div className={"m-contact" + emptyCls(!p.email && !p.phone)}>
         <div className="m-label">Contact</div>
-        <Field type="email" {...text("email")} placeholder="Email" aria-label="Email" />
-        <Field type="tel" {...text("phone")} placeholder="Phone" aria-label="Phone" />
+        <div className="m-vals">{dash(p.email)}{dash(p.phone)}</div>
       </div>
 
-      <div className="m-price">
+      <div className={"m-price" + emptyCls(!p.price)}>
         <div className="m-label">Price</div>
-        <Field {...text("price")} placeholder="—" aria-label="Price" />
+        <div className="m-vals">{dash(p.price)}</div>
       </div>
 
-      <div className="m-remark">
+      <div className={"m-remark" + emptyCls(!p.remarkStatus && !p.remark)}>
         <div className="m-label">Remark</div>
-        <select className={`m-input status-select ${rs.cls}`} value={p.remarkStatus} onChange={(e) => save({ remarkStatus: e.target.value })} aria-label="Remark status">
-          {Object.entries(REMARK_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
-        <Field as="textarea" rows={2} {...text("remark")} placeholder="Note…" aria-label="Remark" />
+        <div className="m-vals">
+          {p.remarkStatus && <span className={`status ${rs.cls}`}>{rs.label}</span>}
+          {p.remark ? <span className="m-text m-note-text">{p.remark}</span> : !p.remarkStatus && <span className="muted m-dash">—</span>}
+        </div>
       </div>
 
       <div className="m-actions">
+        <button className="btn sm" onClick={() => onEdit(p)}><Icon name="edit" size={14} />Edit</button>
         <button className={`btn sm ${p.confirmed ? "confirmed-btn" : "primary"}`} onClick={() => save({ confirmed: !p.confirmed })}
           title={p.confirmed ? "Click to undo" : "Mark this player as confirmed"}>
           {p.confirmed ? "✓ Confirmed" : "Confirm"}
@@ -152,6 +191,8 @@ const ISSUES = [
 
 export default function ManageView({ data, people, allPeople, checks, hidden, orphans, catOptions, onSave, onAdd, onOpen }) {
   const [issue, setIssue] = useState(null);
+  const [editKey, setEditKey] = useState(null);
+  const editing = editKey && allPeople.find((p) => p.key === editKey);
   const checksOf = (p) => checks.filter((c) => c.payerP && c.payerP.key === p.key && (c.mismatch || c.acknowledged));
   const nConfirmed = allPeople.filter((p) => p.confirmed).length;
   const has = {
@@ -203,10 +244,15 @@ export default function ManageView({ data, people, allPeople, checks, hidden, or
       {issue === "orphans" ? null : !shown.length ? <div className="state">No players found</div> : (
         <div className="m-list">
           {shown.map((p, i) => (
-            <ManageRow key={p.key} n={i + 1} p={p} all={allPeople} checks={checksOf(p)} catOptions={catOptions}
-              meta={data.meta} onSave={onSave} onOpen={onOpen} />
+            <ManageRow key={p.key} n={i + 1} p={p} all={allPeople} checks={checksOf(p)}
+              meta={data.meta} onSave={onSave} onOpen={onOpen} onEdit={(x) => setEditKey(x.key)} />
           ))}
         </div>
+      )}
+
+      {editing && (
+        <EditPlayerDialog key={editing.key} p={editing} catOptions={catOptions} onClose={() => setEditKey(null)}
+          onSave={(patch) => onSave(editing.key, { ...baseRec(editing), ...patch })} />
       )}
 
       {hidden.length > 0 && (

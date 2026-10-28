@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AUTO_REFRESH_MS, CATEGORIES, CONFIG_API_URL, PRICES, checkKey, downloadCSV, fetchSheetList, filterRows, isAuthError, loadSheet, saveMgmt, saveSheetList, store } from "./lib/sheet.js";
 import { applyMgmt, newManualKey, peopleCategoryCounts, priceChecks, teamsFromPeople } from "./lib/manage.js";
 import Tabs from "./components/Tabs.jsx";
@@ -16,12 +16,13 @@ import AddSheetDialog from "./components/AddSheetDialog.jsx";
 import SignIn from "./components/SignIn.jsx";
 import ManageView from "./components/ManageView.jsx";
 import Charts from "./components/Charts.jsx";
+import Compare from "./components/Compare.jsx";
 import AddPlayerDialog from "./components/AddPlayerDialog.jsx";
 import useTheme from "./lib/useTheme.js";
 import { dateTime } from "./lib/dates.js";
 
 const VIEW_KEY = "sheetDashboard.view", AUTH_KEY = "sheetDashboard.auth", OLD_ADMIN_KEY = "sheetDashboard.adminKey";
-const VIEWS = [["table", "Table", "table"], ["list", "Teams", "users"], ["people", "Players", "user"], ["charts", "Charts", "chart"]];
+const VIEWS = [["table", "Table", "table"], ["list", "Teams", "users"], ["people", "Players", "user"], ["charts", "Charts", "chart"], ["compare", "Compare", "compare"]];
 const MANAGE_VIEW = ["manage", "Manage", "edit"]; // เฉพาะแอดมิน
 
 export default function App() {
@@ -40,6 +41,7 @@ export default function App() {
   const authKey = auth?.key || "";
   const adminKey = auth?.role === "admin" ? auth.key : "";
   const [adding, setAdding] = useState(false);
+  const [editingSheet, setEditingSheet] = useState(null); // index ของชีตที่กำลังแก้
   const [addingPlayer, setAddingPlayer] = useState(false);
   // ค่าที่แอดมินแก้ในหน้า Manage ของชีตที่เลือก { playerKey: data } — วางทับข้อมูลจากฟอร์มทุกครั้งที่โหลด
   const [records, setRecords] = useState({});
@@ -62,6 +64,7 @@ export default function App() {
   });
   const views = adminKey ? [...VIEWS, MANAGE_VIEW] : VIEWS;
   const view = views.some(([k]) => k === viewPref) ? viewPref : "table";
+  const comparing = view === "compare"; // หน้าเทียบทุกชีต: ซ่อนแท็บ/สถิติ/ตัวกรองของชีตเดียว
   // popup: { row } จากตาราง หรือ { person } จากรายชื่อ (รวมคนที่ไม่ได้กรอกฟอร์ม)
   const [openTarget, setOpenTarget] = useState(null);
   const open = (x) => setOpenTarget(Array.isArray(x) ? { row: x } : { person: x });
@@ -87,22 +90,27 @@ export default function App() {
     }
   }, [authKey, signOut]);
 
+  // นับคำขอ — คำตอบที่มาช้าของชีตเดิม/คำขอเก่า จะไม่ทับข้อมูลของชีตที่เปิดอยู่
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
     if (!sUrl || (CONFIG_API_URL && !authKey)) return;
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
       // ข้อมูลฟอร์ม + ค่าที่แก้ไว้ มาในคำขอเดียว
       const { data: d, records: m } = await loadSheet({ url: sUrl, tab: sTab }, authKey);
+      if (seq !== loadSeq.current) return;
       setData(d);
       setRecords(m);
       setError(null);
       setUpdated("Updated " + new Date().toLocaleTimeString("en-GB"));
     } catch (e) {
+      if (seq !== loadSeq.current) return;
       if (isAuthError(e)) return signOut();
       setData(null);
       setError(e.message);
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [sUrl, sTab, authKey, signOut]);
 
@@ -154,6 +162,10 @@ export default function App() {
 
   const addSheet = async (s) => {
     if (await saveList([...sheets, s])) { setAdding(false); switchTo(sheets.length); }
+  };
+
+  const editSheet = async (s) => {
+    if (await saveList(sheets.map((x, j) => (j === editingSheet ? s : x)))) setEditingSheet(null);
   };
 
   const removeSheet = async (i) => {
@@ -260,8 +272,15 @@ export default function App() {
   let body;
   if (!sheets && listError) body = <div className="state">⚠️ Can't load the sheet list — {listError}</div>;
   else if (!sheets) body = <div className="state"><div className="loader" />Loading…</div>;
+  // Compare โหลดทุกชีตเอง ไม่ขึ้นกับชีตที่เลือกอยู่
+  else if (view === "compare") body = <Compare sheets={sheets} authKey={authKey} />;
   else if (!sheet) body = <div className="state">{adminKey ? 'No sheets yet — click "Add sheet".' : "No sheets configured yet."}</div>;
-  else if (error) body = <div className="state">⚠️ {error}</div>;
+  else if (error) body = (
+    <div className="state">
+      <p style={{ margin: "0 0 12px" }}>⚠️ {error}</p>
+      <button className="btn" onClick={load} disabled={loading}><Icon name="refresh" size={16} />{loading ? "Loading…" : "Try again"}</button>
+    </div>
+  );
   else if (!data) body = <div className="state"><div className="loader" />Loading…</div>;
   else if (view === "charts") body = <Charts people={people} meta={data.meta} />;
   else if (view === "manage") body = (
@@ -342,12 +361,13 @@ export default function App() {
 
       <main className="wrap">
         <div className="page-head">
-          <h2 className="page-title">{views.find(([v]) => v === view)?.[1] || "Dashboard"}</h2>
+          <h2 key={view} className="page-title">{views.find(([v]) => v === view)?.[1] || "Dashboard"}</h2>
         </div>
-        {sheets?.length > 1 && <Tabs sheets={sheets} active={Math.min(active, sheets.length - 1)} onSelect={switchTo}
-          onDelete={adminKey ? removeSheet : null} />}
-        {data && <Stats data={data} rows={rows} />}
-        {sheet && <div className="toolbar">
+        {/* แอดมินเห็นแท็บเสมอ (แม้มีชีตเดียว) เพื่อแก้ชื่อได้ */}
+        {!comparing && (sheets?.length > 1 || (adminKey && sheets?.length > 0)) && <Tabs sheets={sheets} active={Math.min(active, sheets.length - 1)} onSelect={switchTo}
+          onEdit={adminKey ? setEditingSheet : null} onDelete={adminKey ? removeSheet : null} />}
+        {!comparing && data && <Stats data={data} rows={rows} />}
+        {!comparing && sheet && <div className="toolbar">
           <label className="search">
             <Icon name="search" size={14} />
             <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" />
@@ -359,18 +379,21 @@ export default function App() {
               : `${people.length} of ${allPeople.length} players`}
           </span>}
         </div>}
-        {data && (
+        {!comparing && data && (
           <Filters cats={cats} filterCat={filterCat} onCat={setFilterCat} people={people} view={view}
             payStatus={payStatus} onPayStatus={setPayStatus} catCount={catCount} onCatCount={setCatCount}
             maxCats={Math.max(3, data.meta.cats.length, ...allPeople.map((p) => p.cats.length))}
             hasTimestamp={data.meta.time >= 0} regOrder={regOrder} onRegOrder={setRegOrder} />
         )}
-        {body}
+        {/* key เปลี่ยนตอนสลับหน้า/ชีต → เนื้อหาเล่นแอนิเมชันเข้าใหม่ */}
+        <div key={`${view}:${active}`} className="view-in">{body}</div>
       </main>
 
       <RowDialog data={data} people={allPeople} target={openTarget} isAdmin={!!adminKey} checks={checks} onOpen={open} onClose={() => setOpenTarget(null)} />
       {CONFIG_API_URL && <>
         <AddSheetDialog open={adding} onClose={() => setAdding(false)} onAdd={addSheet} />
+        {adminKey && <AddSheetDialog open={editingSheet != null} initial={sheets?.[editingSheet]}
+          onClose={() => setEditingSheet(null)} onAdd={editSheet} />}
         {adminKey && <AddPlayerDialog open={addingPlayer} onClose={() => setAddingPlayer(false)} onAdd={addPlayer} />}
       </>}
     </div>

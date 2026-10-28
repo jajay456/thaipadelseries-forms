@@ -4,7 +4,7 @@ import { dateDay, isoLocal } from "../lib/dates.js";
 
 // ---------- data ----------
 
-const dayLabel = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+export const dayLabel = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 
 // ยอดที่ควรจ่ายตามราคา (ตามจำนวนประเภท)
 const expectedOf = (p) => PRICES[p.cats.length] ?? 0;
@@ -15,7 +15,8 @@ const owed = (p) => {
   return (PRICES[n] ?? 0) - (paid ? PRICES[paid] ?? 0 : 0);
 };
 
-function useChartData(people, meta) {
+// สรุปตัวเลขของชีต 1 ชีต — ใช้ทั้งหน้า Charts และหน้า Compare
+export function summarize(people, meta) {
   const byCat = {};
   CATEGORIES.forEach((c) => (byCat[c] = { paid: 0, unpaid: 0 }));
   people.forEach((p) => p.cats.forEach((c) => {
@@ -44,13 +45,17 @@ function useChartData(people, meta) {
     const v = p.row && meta.nation >= 0 ? p.row[meta.nation].trim() : "";
     if (v) { const k = v[0].toUpperCase() + v.slice(1).toLowerCase(); nat[k] = (nat[k] || 0) + 1; }
   });
+  const nationCount = Object.keys(nat).length;
   let nations = Object.entries(nat).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   if (nations.length > 8) nations = [...nations.slice(0, 7), ["Other", nations.slice(7).reduce((t, [, n]) => t + n, 0)]];
 
   return {
     cats: Object.entries(byCat),
+    catEntries: people.reduce((t, p) => t + p.cats.filter((c) => c.cat).length, 0),
     timeline,
     nations,
+    nationCount,
+    natAll: nat,
     players: people.length,
     paidPlayers: people.filter((p) => p.status === "paid").length,
     outstanding: people.reduce((t, p) => t + owed(p), 0),
@@ -62,7 +67,7 @@ function useChartData(people, meta) {
 // ---------- pieces ----------
 
 // tooltip ตัวเดียวทั้งหน้า — ค่านำ ชื่อตาม · แสดงทั้งตอน hover และ focus (คีย์บอร์ด)
-function useTip() {
+export function useTip() {
   const [tip, setTip] = useState(null);
   const bind = (lines) => ({
     tabIndex: 0,
@@ -83,7 +88,7 @@ function useTip() {
   return [bind, el];
 }
 
-function Card({ title, sub, legend, table, children }) {
+export function Card({ title, sub, legend, table, children }) {
   const [showTable, setShowTable] = useState(false);
   return (
     <section className="viz-card">
@@ -105,7 +110,7 @@ function Card({ title, sub, legend, table, children }) {
   );
 }
 
-const Swatch = ({ series, label }) => <span className="viz-legend-item"><i className={`viz-swatch ${series}`} />{label}</span>;
+export const Swatch = ({ series, label }) => <span className="viz-legend-item"><i className={`viz-swatch ${series}`} />{label}</span>;
 
 // แท่งแนวนอน: ป้ายซ้าย · แท่ง (เริ่มจากเส้นฐานเดียว) · ค่าที่ปลายแท่ง
 function HBars({ rows, max, bind }) {
@@ -126,12 +131,12 @@ function HBars({ rows, max, bind }) {
   );
 }
 
-const niceMax = (v) => (v <= 5 ? Math.max(v, 1) : Math.ceil(v / 5) * 5);
+export const niceMax = (v) => (v <= 5 ? Math.max(v, 1) : Math.ceil(v / 5) * 5);
 
 // ---------- view ----------
 
 export default function Charts({ people, meta }) {
-  const d = useChartData(people, meta);
+  const d = summarize(people, meta);
   const [bind, tipEl] = useTip();
   const catMax = Math.max(1, ...d.cats.map(([, v]) => v.paid + v.unpaid));
   const natMax = Math.max(1, ...d.nations.map(([, n]) => n));
@@ -139,6 +144,11 @@ export default function Charts({ people, meta }) {
   // จ่ายเกิน = เงินที่เข้ามา − มูลค่าที่จ่ายครบแล้วตามราคา (เช่น จ่ายซ้ำ)
   const overpaid = Math.max(0, d.collected - (d.expected - d.outstanding));
   const peakDay = d.timeline.reduce((best, x) => (x[1] > (best?.[1] ?? -1) ? x : best), null);
+  // ยอดสะสมรายวัน สำหรับกราฟเส้น
+  let running = 0;
+  const cumulative = d.timeline.map(([day, n]) => [day, (running += n)]);
+  const cumMax = niceMax(running);
+  const linePts = cumulative.map(([, n], i) => [((i + 0.5) / cumulative.length) * 100, 100 - (n / cumMax) * 100]);
 
   return (
     <div className="viz">
@@ -203,11 +213,43 @@ export default function Charts({ people, meta }) {
           ) : <p className="muted">No timestamp column found.</p>}
         </Card>
 
+        <Card title="Total registrations" sub="Running total of form submissions"
+          table={[["Date", "Total"], ...cumulative.map(([day, n]) => [dayLabel(day), n])]}>
+          {cumulative.length ? (
+            <div className="cols line">
+              <div className="cols-plot">
+                {[cumMax, Math.round(cumMax / 2), 0].map((t) => (
+                  <span key={t} className="cols-grid" style={{ bottom: `${(t / cumMax) * 100}%` }}><span>{t}</span></span>
+                ))}
+                {/* เส้นวาดใน viewBox 0–100 ยืดเต็มกรอบ; จุดอยู่กลางแต่ละช่องวันให้ตรงกับป้ายแกน x */}
+                <svg className="line-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  <path className="line-area" d={`M${linePts[0][0]},100 L${linePts.map((p) => p.join(",")).join(" L")} L${linePts.at(-1)[0]},100 Z`} />
+                  <path className="line-path" d={`M${linePts.map((p) => p.join(",")).join(" L")}`} />
+                </svg>
+                <div className="cols-bars">
+                  {cumulative.map(([day, n], i) => (
+                    <div key={day} className="col" {...bind([[n, `total by ${dayLabel(day)}`], [`+${d.timeline[i][1]}`, "that day"]])} aria-label={`${dayLabel(day)}: ${n} total`}>
+                      <span className={`line-dot${i === cumulative.length - 1 ? " end" : ""}`} style={{ bottom: `${(n / cumMax) * 100}%` }}>
+                        {i === cumulative.length - 1 && <span className="col-value">{n}</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="cols-x">
+                {cumulative.map(([day], i) => (
+                  <span key={day}>{i === 0 || i === cumulative.length - 1 || cumulative.length <= 8 ? dayLabel(day) : ""}</span>
+                ))}
+              </div>
+            </div>
+          ) : <p className="muted">No timestamp column found.</p>}
+        </Card>
+
         <Card title="Nationalities" sub="Players who filled in the form"
           table={[["Nationality", "Players"], ...d.nations]}>
           {d.nations.length ? (
             <HBars max={natMax} bind={bind} rows={d.nations.map(([n, c]) => ({
-              label: n, segs: [{ n: c, series: "s1" }], value: c, tip: [[c, n]],
+              label: n, segs: [{ n: c, series: "s3" }], value: c, tip: [[c, n]],
             }))} />
           ) : <p className="muted">No nationality column found.</p>}
         </Card>

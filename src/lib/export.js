@@ -15,17 +15,19 @@ export const playerRow = (p, admin) => [
   ...(admin ? [REMARK_STATUS[p.remarkStatus]?.label.replace("—", "") || "", p.remark] : []),
 ];
 
-// โหลดทุกชีต (พร้อมค่าที่แก้ในหน้า Manage ของแต่ละชีต) แล้วรวมรายชื่อผู้เล่นเป็นตารางเดียว
-// ชีตที่โหลดไม่ได้จะถูกข้าม และคืนชื่อกลับไปใน failed
+// โหลดทุกชีตพร้อมกัน (พร้อมค่าที่แก้ในหน้า Manage ของแต่ละชีต) → [{ s, data, people } | { s, error }]
+export const loadAllPeople = (sheets, key) => Promise.all(sheets.map(async (s) => {
+  try {
+    const { data, records } = await loadSheet(s, key);
+    return { s, data, people: applyMgmt(buildPeople(data), records, data.meta).people };
+  } catch (e) {
+    return { s, error: e.message };
+  }
+}));
+
+// รวมรายชื่อผู้เล่นทุกชีตเป็นตารางเดียว — ชีตที่โหลดไม่ได้จะถูกข้าม และคืนชื่อกลับไปใน failed
 export async function exportAllSheets(sheets, key, admin) {
-  const results = await Promise.all(sheets.map(async (s) => {
-    try {
-      const { data, records } = await loadSheet(s, key);
-      return { s, people: applyMgmt(buildPeople(data), records, data.meta).people };
-    } catch (e) {
-      return { s, error: e.message };
-    }
-  }));
+  const results = await loadAllPeople(sheets, key);
   const rows = [["Sheet", "#", ...playerHeaders(admin)]];
   results.forEach(({ s, people }) => people?.forEach((p, i) => rows.push([s.name, i + 1, ...playerRow(p, admin)])));
   return { rows, failed: results.filter((r) => r.error).map((r) => `${r.s.name} (${r.error})`) };

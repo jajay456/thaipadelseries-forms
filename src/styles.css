@@ -108,8 +108,10 @@ header {
   position: sticky; top: 0; z-index: 10;
   padding: 16px max(16px, env(safe-area-inset-left)) 8px max(16px, env(safe-area-inset-right));
   /* มีพื้นหลังกันเนื้อหาที่เลื่อนผ่านทับตัวหนังสือ */
-  background: color-mix(in srgb, var(--bg) 30%, transparent);
-  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  /* ไม่ใส่สีทับ/ไม่เร่งสี ให้กลืนกับพื้นหลังตอนอยู่นิ่ง — เบลอเฉพาะเนื้อหาที่เลื่อนลอดใต้ และจางหายที่ขอบล่าง */
+  background: transparent;
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent); -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
 }
 .header-in { max-width: 1400px; margin: 0 auto; display: flex; gap: 12px; align-items: center; }
 .brand { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
@@ -152,7 +154,8 @@ header {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- tabs ---------- */
-.tabs { display: flex; gap: 6px; margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
+/* overflow ตัดทุกอย่างที่ล้นกรอบ → เผื่อ padding ให้เงาแท็บ แล้วหักคืนด้วย margin ติดลบ ไม่ให้เลย์เอาต์ขยับ */
+.tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 8px 20px 24px; margin: -8px -20px -8px; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
   flex: none; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line);
@@ -391,6 +394,24 @@ textarea.m-input { height: auto; padding: 6px 8px; resize: vertical; line-height
 .slip-check.ok { color: var(--ok); }
 .link-btn { border: 0; background: none; padding: 0; color: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; font-size: 12px; }
 .m-note summary { cursor: pointer; }
+.m-cat-view { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 26px; }
+.m-cat-name { font-weight: 500; }
+.m-text { overflow-wrap: anywhere; }
+.m-note-text { white-space: pre-wrap; font-size: 13px; }
+.m-vals { display: grid; gap: 6px; justify-items: start; min-width: 0; }
+.edit-cats { display: grid; gap: 8px; }
+.edit-cats > .btn { justify-self: start; }
+.edit-cats .m-cat input:not([type="checkbox"]), .edit-cats .m-cat select { height: 40px; }
+.dlg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+dialog textarea {
+  width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface-2); outline: none; resize: vertical; line-height: 1.4;
+}
+dialog textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+@media (max-width: 640px) {
+  .dlg-grid { grid-template-columns: 1fr; }
+  dialog textarea { font-size: 16px; }
+}
 .m-note-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); margin-top: 6px; }
 dialog label.check { display: flex; align-items: center; gap: 8px; color: var(--text); }
 @media (max-width: 1100px) {
@@ -408,13 +429,24 @@ dialog label.check { display: flex; align-items: center; gap: 8px; color: var(--
   .m-cat > :nth-child(3) { grid-area: 2 / 2; }
   .m-cat > :nth-child(4) { grid-area: 1 / 3; }
   .m-input { height: 38px; font-size: 16px; }
+  /* มือถือ: แถวกระชับ — ซ่อนลำดับและช่องว่าง, ข้อมูลรองเป็นคู่ ป้าย:ค่า บรรทัดเดียว */
+  .m-row { gap: 10px; }
+  .m-player .n, .m-empty, .m-dash, .m-cats > .m-label { display: none; }
+  .m-name { padding-top: 2px; }
+  .m-contact, .m-price, .m-remark { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: baseline; font-size: 14px; }
+  .m-label { margin: 0; font-size: 12px; }
+  .m-vals { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; }
+  .m-cat-view { font-size: 14px; }
+  .m-cat-view .status { font-size: 11px; padding: 1px 8px; }
+  .m-actions { gap: 8px; padding-top: 4px; }
+  .m-actions .btn { flex: 1; justify-content: center; height: 36px; }
 }
 
 /* ---------- charts ---------- */
 /* สีกราฟผ่านการตรวจตาบอดสี (dataviz validator) ทั้งสองโหมด: s1 = Paid / ค่าหลัก, s2 = Unpaid */
-.viz { --s1: #2a78d6; --s2: #eb6834; --grid: #e1e0d9; --axis: #c3c2b7; display: grid; gap: 14px; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .viz { --s1: #3987e5; --s2: #d95926; --grid: #2c2c2a; --axis: #383835; } }
-:root[data-theme="dark"] .viz { --s1: #3987e5; --s2: #d95926; --grid: #2c2c2a; --axis: #383835; }
+.viz { --s1: #22a85e; --s2: #c2410c; --s3: #6b5bd6; --grid: #e1e0d9; --axis: #c3c2b7; display: grid; gap: 14px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .viz { --s1: #3aae68; --s2: #b8401c; --s3: #8a7cf0; --grid: #2c2c2a; --axis: #383835; } }
+:root[data-theme="dark"] .viz { --s1: #3aae68; --s2: #b8401c; --s3: #8a7cf0; --grid: #2c2c2a; --axis: #383835; }
 
 .viz-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .viz-kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 4px; box-shadow: var(--shadow); }
@@ -440,6 +472,7 @@ dialog label.check { display: flex; align-items: center; gap: 8px; color: var(--
 .hbar-track { display: flex; align-items: center; gap: 2px; min-width: 0; border-left: 1px solid var(--axis); height: 20px; }
 .hbar-seg { height: 20px; background: var(--s1); min-width: 3px; }
 .hbar-seg.s2 { background: var(--s2); }
+.hbar-seg.s3 { background: var(--s3); }
 .hbar-seg:last-of-type { border-radius: 0 4px 4px 0; }
 .hbar-value { font-size: 12px; color: var(--muted); padding-left: 6px; font-variant-numeric: tabular-nums; }
 
@@ -455,6 +488,17 @@ dialog label.check { display: flex; align-items: center; gap: 8px; color: var(--
 .cols-x { display: flex; gap: 2px; margin-left: 24px; }
 .cols-x span { flex: 1; text-align: center; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: visible; }
 
+.line-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.line-path { fill: none; stroke: var(--s1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.line-area { fill: color-mix(in srgb, var(--s1) 12%, transparent); }
+.line .col { position: relative; }
+.line-dot {
+  position: absolute; left: 50%; width: 8px; height: 8px; margin: 0 0 -4px -4px; border-radius: 50%;
+  background: var(--s1); box-shadow: 0 0 0 2px var(--glass-strong); opacity: 0; transition: opacity .1s;
+}
+.line-dot.end, .line .col:hover .line-dot, .line .col:focus-visible .line-dot { opacity: 1; }
+.line-dot .col-value { padding-bottom: 4px; }
+
 .viz-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .viz-table th, .viz-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); position: static; background: none; cursor: default; }
 .viz-table td.num, .viz-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
@@ -469,6 +513,51 @@ dialog label.check { display: flex; align-items: center; gap: 8px; color: var(--
 .viz-tip-row b { font-size: 13px; color: var(--text); }
 .viz-tip-row span { color: var(--muted); }
 .viz-key { width: 10px; height: 2px; border-radius: 1px; background: var(--s1); }
+
+/* ---------- compare (เทียบหลายชีต) ---------- */
+/* ชุดสีมาตรฐาน 8 สี ผ่าน dataviz validator ทั้งสองโหมด · k1…k8 = สีประจำชีตตามลำดับในรายการ */
+.viz { --k1: #2a78d6; --k2: #eb6834; --k3: #1baf7a; --k4: #eda100; --k5: #e87ba4; --k6: #008300; --k7: #6250d6; --k8: #e34948; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .viz { --k1: #3987e5; --k2: #d95926; --k3: #199e70; --k4: #c98500; --k5: #d55181; --k6: #008300; --k7: #9085e9; --k8: #e66767; } }
+:root[data-theme="dark"] .viz { --k1: #3987e5; --k2: #d95926; --k3: #199e70; --k4: #c98500; --k5: #d55181; --k6: #008300; --k7: #9085e9; --k8: #e66767; }
+.k1 { --c: var(--k1); } .k2 { --c: var(--k2); } .k3 { --c: var(--k3); } .k4 { --c: var(--k4); }
+.k5 { --c: var(--k5); } .k6 { --c: var(--k6); } .k7 { --c: var(--k7); } .k8 { --c: var(--k8); }
+.viz-swatch[class*=" k"], .viz-key[class*=" k"], .hbar-seg[class*=" k"], .line-dot[class*=" k"] { background: var(--c); }
+.line-path[class*=" k"] { stroke: var(--c); }
+.cmp-picker { align-items: center; margin-bottom: 0; }
+.cmp-picker .chip:disabled { opacity: .45; cursor: not-allowed; }
+.cmp-picker .viz-swatch { flex: none; }
+.cmp-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 12px; }
+.cmp-metric { display: grid; gap: 8px; align-content: start; padding: 14px 16px; border-radius: 16px; background: var(--surface-2); }
+.cmp-metric-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; }
+.cmp-metric-total { color: var(--muted); font-weight: 500; font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.cmp-metric-total::before { content: "Total "; }
+.cmp-metric-row { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; align-items: baseline; outline: none; border-radius: 6px; }
+.cmp-metric-row:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.cmp-metric-name { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmp-metric-row b { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; text-align: right; }
+.cmp-metric-bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--c) 14%, transparent); overflow: hidden; }
+.cmp-metric-bar i { display: block; height: 100%; min-width: 3px; border-radius: 3px; background: var(--c); }
+@media (prefers-reduced-motion: no-preference) {
+  .cmp-metric-bar i { transform-origin: left; animation: grow-x .7s cubic-bezier(.2, .8, .2, 1) backwards; }
+}
+@media (max-width: 640px) {
+  .cmp-metrics { gap: 8px; }
+  .cmp-metric { padding: 12px 14px; }
+  /* แท่งกลุ่ม: ป้ายอยู่บน แท่งเต็มความกว้าง */
+  .cmp-group { grid-template-columns: 1fr; gap: 4px; }
+  .cmp-picker > .muted { flex: none; }
+  .viz-legend { flex-wrap: wrap; gap: 6px 14px; }
+}
+.cmp-groups { gap: 10px; }
+.cmp-group { display: grid; grid-template-columns: minmax(90px, 32%) 1fr; align-items: center; gap: 10px; padding: 3px 0; border-radius: 6px; outline: none; }
+.cmp-group:hover, .cmp-group:focus-visible { background: var(--surface-2); }
+.cmp-bars { display: grid; gap: 2px; min-width: 0; }
+.cmp-bars .hbar-track, .cmp-bars .hbar-seg { height: 12px; }
+.cmp-bars .hbar-value { font-size: 11px; }
+.cmp-returning { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; }
+.cmp-returning li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.cmp-returning li:last-child { border-bottom: 0; }
+.cmp-in { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: flex-end; font-size: 12px; color: var(--muted); }
 
 /* ---------- sign in ---------- */
 .signin { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; }
@@ -576,6 +665,10 @@ th { background: var(--glass-strong); backdrop-filter: var(--glass-blur); -webki
   }
   .side-nav span { position: static; transform: none; opacity: 1; padding: 0; background: none; color: inherit; font-size: 10px; }
 }
+/* จอแคบ + เมนู 6 ปุ่ม (แอดมิน): บีบระยะให้แถบล่างไม่ล้นจอ */
+@media (max-width: 420px) {
+  .side-nav button { min-width: 0; padding: 0 7px; }
+}
 @media (max-width: 640px) {
   body { font-size: 15px; }
   .page-title { font-size: 30px; }
@@ -587,7 +680,7 @@ th { background: var(--glass-strong); backdrop-filter: var(--glass-blur); -webki
   .stat { padding: 14px; gap: 10px; border-radius: 18px; }
   .stat .k { font-size: 13px; }
   .stat .v { font-size: 26px; }
-  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 12px; padding: 0 16px; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: -8px -16px 4px; padding: 8px 16px 8px; }
   .chips::-webkit-scrollbar { display: none; }
   .toolbar { flex-wrap: wrap; }
   .search { flex-basis: 100%; order: -1; }
@@ -616,3 +709,54 @@ th { background: var(--glass-strong); backdrop-filter: var(--glass-blur); -webki
   dialog input { font-size: 16px; }
   .actions .btn { flex: 1; justify-content: center; height: 42px; }
 }
+
+/* ---------- motion: ตอบสนองทุกการกด/สลับหน้า — ปิดทั้งหมดถ้าผู้ใช้ตั้ง "ลดการเคลื่อนไหว" ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  /* fill แบบ backwards: จบแล้วไม่ค้าง transform (ไม่งั้น tooltip position:fixed ข้างในจะเพี้ยน) */
+  .view-in, .page-title { animation: rise .38s cubic-bezier(.2, .8, .2, 1) backwards; }
+  .stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li { animation: rise .42s cubic-bezier(.2, .8, .2, 1) backwards; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(2) { animation-delay: 35ms; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(3) { animation-delay: 70ms; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(4) { animation-delay: 105ms; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(5) { animation-delay: 140ms; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(6) { animation-delay: 175ms; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(7) { animation-delay: 210ms; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(8) { animation-delay: 245ms; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(9) { animation-delay: 280ms; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(10) { animation-delay: 315ms; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(11) { animation-delay: 350ms; }
+  :is(.stat, .viz-kpi, .viz-card, .card, .group, .m-row, .people-list li):nth-child(12) { animation-delay: 385ms; }
+
+  /* กดแล้วยุบนิดหนึ่ง */
+  .btn, .tab, .chip, .fsel, .issue, .side-nav button, .avatar-btn, .link-btn {
+    transition: transform .16s cubic-bezier(.3, .7, .4, 1.4), background-color .2s, border-color .2s, color .2s, box-shadow .2s;
+  }
+  .btn:active:not(:disabled), .tab:active, .chip:active, .fsel:active, .issue:active, .side-nav button:active, .avatar-btn:active { transform: scale(.94); }
+  .side-nav button:hover:not(.on) { transform: translateY(-1px); }
+
+  /* สถานะที่เพิ่งถูกเลือก/ยืนยัน เด้งรับ */
+  .tab.active, .chip.on, .fsel.on, .issue.on, .side-nav button.on, .btn.confirmed-btn { animation: bump .36s cubic-bezier(.3, .7, .4, 1.5); }
+  .side-nav button.on svg { animation: wiggle .5s ease-out; }
+
+  /* เมนู / tooltip โผล่ขึ้นมานุ่ม ๆ */
+  .menu-pop { transform-origin: top right; animation: drop .16s ease-out; }
+  .viz-tip { animation: fade .12s ease-out; }
+
+  /* กราฟ: แท่งงอกจากฐาน เส้นวาดจากซ้ายไปขวา */
+  .hbar-seg { transform-origin: left; animation: grow-x .6s cubic-bezier(.2, .8, .2, 1) backwards; }
+  .hbar-row:nth-child(n + 2) .hbar-seg { animation-delay: 40ms; }
+  .hbar-row:nth-child(n + 4) .hbar-seg { animation-delay: 80ms; }
+  .hbar-row:nth-child(n + 6) .hbar-seg { animation-delay: 120ms; }
+  .col-bar { transform-origin: bottom; animation: grow-y .6s cubic-bezier(.2, .8, .2, 1) backwards; }
+  .line-svg { animation: reveal .9s cubic-bezier(.4, 0, .2, 1) backwards; }
+  .line-dot.end { animation: fade .3s .7s backwards; }
+  .viz-meter span { transform-origin: left; animation: grow-x .8s cubic-bezier(.2, .8, .2, 1) backwards; }
+}
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes bump { 40% { transform: scale(1.06); } }
+@keyframes wiggle { 30% { transform: rotate(-10deg) scale(1.1); } 60% { transform: rotate(6deg); } }
+@keyframes drop { from { opacity: 0; transform: translateY(-6px) scale(.97); } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes grow-x { from { transform: scaleX(0); } }
+@keyframes grow-y { from { transform: scaleY(0); } }
+@keyframes reveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
